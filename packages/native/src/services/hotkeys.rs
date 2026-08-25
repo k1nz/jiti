@@ -12,9 +12,18 @@ fn mods() -> Modifiers {
 
 pub fn register(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let gs = app.global_shortcut();
-    gs.register(Shortcut::new(Some(mods()), Code::KeyT))?;
-    gs.register(Shortcut::new(Some(mods()), Code::KeyG))?;
-    gs.register(Shortcut::new(Some(mods()), Code::Space))?;
+    // 全局热键可能已被其他程序占用（RegisterHotKey 返回 ERROR_HOTKEY_ALREADY_REGISTERED）。
+    // 逐个尝试，失败的跳过并告警 —— 不能让单个热键冲突拖垮整个应用启动。
+    let candidates: [(Shortcut, &str); 3] = [
+        (Shortcut::new(Some(mods()), Code::KeyT), "⌥⌘T（翻译）"),
+        (Shortcut::new(Some(mods()), Code::KeyG), "⌥⌘G（语法）"),
+        (Shortcut::new(Some(mods()), Code::Space), "⌥⌘Space（面板）"),
+    ];
+    for (shortcut, label) in candidates {
+        if let Err(err) = gs.register(shortcut) {
+            eprintln!("[jiti] 全局热键 {label} 注册失败，已跳过：{err}");
+        }
+    }
     Ok(())
 }
 

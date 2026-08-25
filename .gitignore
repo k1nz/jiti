@@ -19,3 +19,9 @@ packages/native/icons/ios/
 # Env / secrets
 .env
 .env.*
+
+# Local tool downloads (rustup-init.exe etc.)
+.tools/
+
+# Local pnpm store artifacts
+.pnpm-store/
