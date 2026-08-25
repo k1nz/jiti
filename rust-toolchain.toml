@@ -1,0 +1,4 @@
+# Jiti 使用本机已安装的 stable Rust（Tauri 2 声明式 MSRV 高于系统默认的 1.81）。
+# 若全新环境未安装 stable，rustup 会自动下载最新稳定版；与 Cargo 锁定的版本保持一致即可。
+[toolchain]
+channel = "stable"

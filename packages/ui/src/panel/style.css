@@ -1,0 +1,226 @@
+/* ============================================================
+   Jiti 面板样式 — M0 干净灰壳
+   §8 原生约定：系统字体栈、可点击不动指针、chrome 不可选中、
+   prefers-reduced-motion、明暗跟随系统。无第三方 UI 库。
+   ============================================================ */
+
+/* ── 设计 token（§8.2：一个强调色；独立语义色；深浅两套同时设计） ── */
+:root {
+  color-scheme: light;
+  --j-bg: #f4f6f8;
+  --j-fg: #1c2128;
+  --j-muted: #5c6773;
+  --j-faint: #98a1ab;
+  --j-border: rgba(28, 33, 40, 0.1);
+  --j-input-bg: rgba(255, 255, 255, 0.72);
+  --j-hover: rgba(28, 33, 40, 0.055);
+  --j-active: rgba(28, 33, 40, 0.09);
+  --j-accent: #e8910f;
+  --j-accent-ink: #241705;
+  --j-tab-on: rgba(232, 145, 15, 0.14);
+  --j-focus-ring: rgba(232, 145, 15, 0.55);
+  --j-dot: #0f9d6a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --j-bg: #0f141a;
+    --j-fg: #e6ebf1;
+    --j-muted: #8a94a0;
+    --j-faint: #59636f;
+    --j-border: rgba(230, 235, 241, 0.12);
+    --j-input-bg: rgba(255, 255, 255, 0.06);
+    --j-hover: rgba(230, 235, 241, 0.07);
+    --j-active: rgba(230, 235, 241, 0.12);
+    --j-accent: #f2ae4b;
+    --j-accent-ink: #1a1204;
+    --j-tab-on: rgba(242, 174, 75, 0.17);
+    --j-focus-ring: rgba(242, 174, 75, 0.6);
+    --j-dot: #3ecf8e;
+  }
+}
+
+/* ── 基础：透明衬底 + chrome 不可选中 + 不动指针 ── */
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent; /* §4.6 A.5：衬底交给窗口/材质，WebView 不画白底 */
+  overflow: hidden;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI Variable',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  font-size: 13px;
+  color: var(--j-fg);
+}
+
+/* 面板本体圆角交给系统窗口（§8.2：不自定义窗口 border-radius / box-shadow）。
+   macOS 由窗口服务器裁圆角，Windows 由 OS 似的形状裁。 */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--j-bg);
+  overflow: hidden;
+  -webkit-app-region: drag; /* 无边框窗口：拖空白处移动 */
+}
+
+.chrome {
+  -webkit-app-region: no-drag; /* chrome 区可交互，不参与拖拽 */
+}
+
+/* ── 输入框 ── */
+.search {
+  -webkit-app-region: no-drag;
+  width: 100%;
+  margin: 14px 14px 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--j-fg);
+  background: var(--j-input-bg);
+  border: 1px solid var(--j-border);
+  border-radius: 8px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease;
+}
+
+.search::placeholder {
+  color: var(--j-faint);
+}
+
+.search:focus-visible {
+  border-color: var(--j-accent);
+  box-shadow: 0 0 0 2px var(--j-focus-ring);
+}
+
+/* ── 模式 Tab（§8.3 / §4.6 C.1） ── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px 12px 6px;
+}
+
+.tab {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--j-muted);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: default; /* 原生不动指针 */
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.tab:hover {
+  background: var(--j-hover);
+}
+
+.tab.active {
+  color: var(--j-accent);
+  background: var(--j-tab-on);
+}
+
+.tab:active {
+  transform: translateY(1px); /* §8.5：:active 按压反馈 */
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--j-focus-ring);
+  outline-offset: -1px;
+}
+
+/* ── 内容区（各模式占位） ── */
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* §4.6 A.11：杀掉内层橡皮筋 */
+  -webkit-app-region: no-drag;
+  background:
+    linear-gradient(var(--j-bg), var(--j-bg)) padding-box,
+    var(--j-bg);
+}
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 160px;
+  color: var(--j-faint);
+}
+
+.placeholder p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ── 状态栏 ── */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-top: 1px solid var(--j-border);
+  color: var(--j-muted);
+  font-size: 11.5px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--j-dot);
+}
+
+.mono {
+  font-family:
+    ui-monospace,
+    'SF Mono',
+    'Cascadia Mono',
+    monospace;
+}
+
+/* ── 动效纪律（§8.6）：reduced-motion 下关闭全部非必要动画 ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+packages/ui/dist/
+packages/native/target/
+
+# Rust / Tauri generated
+packages/native/src/ipc/bindings_gen.rs
+packages/native/gen/
+packages/native/icons/android/
+packages/native/icons/ios/
+
+# Logs / OS
+*.log
+.DS_Store
+
+# Env / secrets
+.env
+.env.*

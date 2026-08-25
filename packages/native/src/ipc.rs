@@ -1,0 +1,55 @@
+//! IPC 契约（tauri-specta 单源）：Rust 命令签名 = TS 类型唯一事实源。
+//! 生成的 `../ui/src/ipc/bindings.ts` 由 debug 构建自动导出，勿手改。
+
+use tauri::Wry as TauriRuntime;
+use tauri_specta::{collect_commands, Builder as SpectaBuilder};
+
+/// 命令以完整模块路径传入：tauri/specta 的辅助宏（`__cmd_*` / `__specta__fn_*`）
+/// 走“函数所在模块的 pub use”路径解析（见 commands/panel.rs 等处的生成物），
+/// 不允许用 `use crate::__cmd_*` 直接导入（Rust 对 proc-macro 生成宏的限制）。
+pub fn generate() -> SpectaBuilder<TauriRuntime> {
+    SpectaBuilder::<TauriRuntime>::new().commands(collect_commands![
+        crate::commands::panel::show_popup,
+        crate::commands::panel::hide_popup,
+        crate::commands::settings::settings_get,
+        crate::commands::settings::settings_set,
+        crate::commands::selection::get_selected_text,
+    ])
+}
+
+/// 仅 debug 构建导出（M0 阶段前端必须能立即拿到绑定）。
+/// specta 的类型图收集/序列化递归较深，测试线程默认栈不够 —— 放进大栈线程执行。
+#[cfg(debug_assertions)]
+pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
+    use specta_typescript::Typescript;
+    let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src/ipc/bindings.ts");
+    let builder = builder.clone();
+    std::thread::Builder::new()
+        .name("jiti:specta-export".into())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(move || {
+            builder
+                .export(Typescript::default(), &out)
+                .expect("tauri-specta: failed to export bindings.ts");
+        })
+        .expect("failed to spawn specta exporter")
+        .join()
+        .expect("specta exporter panicked");
+}
+
+/// Request/Response 与 Event 是互不相交的两个形状（§3.5）：
+/// M0 事件（hotkey://pressed、panel://visibility）保持普通 emit/listen，不进 specta。
+///
+/// §3.5 要求的版本化常量：破坏性变更必升。M0 暂无消费方，M1 接入 IPC 日志时启用。
+#[allow(dead_code)]
+pub const SCHEMA_VERSION: u32 = 1;
+
+#[cfg(test)]
+mod tests {
+    /// `cargo test` 时会重新导出 TS 绑定（与 `tauri dev` 启动时的导出幂等）。
+    /// 保证前端 `pnpm typecheck` / `vitest` 在没跑过 GUI 的干净 checkout 上也能过。
+    #[test]
+    fn generate_typescript_bindings() {
+        super::export(&super::generate());
+    }
+}

@@ -1,0 +1,40 @@
+[package]
+name = "jiti"
+version = "0.1.0"
+description = "Jiti — 快速翻译 / 语法检查桌面工具（M0 骨架）"
+edition = "2021"
+
+[lib]
+name = "jiti_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-store = "2"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+specta = { version = "=2.0.0-rc.25", features = ["derive", "function", "serde_json"] }
+specta-typescript = "=0.0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# macOS 原生缝（objc2）：无焦点面板 / 防节流 / 首帧同步 / 光标定位
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+objc2-core-graphics = "0.3"
+block2 = "0.6"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
