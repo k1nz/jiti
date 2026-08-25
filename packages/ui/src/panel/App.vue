@@ -1,14 +1,29 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, type Component } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   IconAbc,
+  IconCopy,
   IconHistory,
   IconLanguage,
   IconNotebook,
+  IconPlayerPlay,
   IconSettings,
+  IconTrash,
 } from '@tabler/icons-vue';
-import { commands } from '../ipc/bindings';
+import { commands, events } from '../ipc/bindings';
+import type {
+  AccessibilityStatus,
+  EngineErrorPayload,
+  HistoryEntry,
+  ProviderConfig_Serialize,
+  ProviderView,
+  ProvidersConfig_Serialize,
+  ProvidersSnapshot,
+  TestProviderResult,
+  TranslateRequest_Deserialize,
+  TranslateResult,
+} from '../ipc/bindings';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 
 const store = usePanelStore();
@@ -23,15 +38,249 @@ const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = 
 ];
 
 const PLACEHOLDERS: Record<PanelMode, { icon: Component; line: string }> = {
-  translate: { icon: IconLanguage, line: '翻译 · M1 接入（快捷键唤起时读取选中文本）' },
+  translate: { icon: IconLanguage, line: '输入文本，或选中一段文字后按 ⌥⌘T' },
   grammar: { icon: IconAbc, line: '语法检查 · M2 接入' },
   mistakes: { icon: IconNotebook, line: '还没有错题，检查一次就有了' },
   history: { icon: IconHistory, line: '暂无历史' },
-  settings: { icon: IconSettings, line: '设置独立窗口 · M4 完善' },
+  settings: { icon: IconSettings, line: '设置加载中' },
 };
+
+const target = ref('zh');
+const translateStatus = ref<'idle' | 'loading' | 'done' | 'error'>('idle');
+const translateResult = ref<TranslateResult | null>(null);
+const translateError = ref<EngineErrorPayload | null>(null);
+const history = ref<HistoryEntry[]>([]);
+const settings = ref<ProvidersSnapshot | null>(null);
+const accessStatus = ref<AccessibilityStatus | null>(null);
+const keyInputs = ref<Record<string, string>>({});
+const testResults = ref<Record<string, TestProviderResult | null>>({});
+const testing = ref<Record<string, boolean>>({});
+const copyLabel = ref('');
 
 let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
+let unlistenEngineError: UnlistenFn | undefined;
+
+function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
+  return promise.then((result) => {
+    if (result.status === 'ok') return result.data;
+    throw result.error;
+  });
+}
+
+function onShellClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (!target.closest('button, input, a, select, textarea')) {
+    searchEl.value?.focus();
+  }
+}
+
+function hasCjk(text: string) {
+  return /[\u3400-\u4dbf\u4e00-\u9fff]/.test(text);
+}
+
+function guessTarget(text: string) {
+  return hasCjk(text) ? 'en' : 'zh';
+}
+
+async function runTranslate(text = store.input) {
+  const input = text.trim();
+  if (!input) return;
+  translateStatus.value = 'loading';
+  translateError.value = null;
+  translateResult.value = null;
+  const request: TranslateRequest_Deserialize = {
+    text: input,
+    from: hasCjk(input) ? 'zh' : null,
+    to: target.value,
+  };
+  try {
+    const result = await unwrap(commands.translate(request));
+    translateResult.value = result;
+    translateStatus.value = 'done';
+    await reloadHistory();
+  } catch (err) {
+    translateError.value = err as EngineErrorPayload;
+    translateStatus.value = 'error';
+  }
+}
+
+async function captureTranslate() {
+  translateStatus.value = 'idle';
+  const selected = await commands.getSelectedText();
+  store.input = selected.text;
+  if (selected.text.trim()) {
+    target.value = guessTarget(selected.text);
+    await runTranslate(selected.text);
+  }
+  searchEl.value?.focus();
+}
+
+async function copyResult() {
+  const output = translateResult.value?.output;
+  if (!output) return;
+  try {
+    await navigator.clipboard.writeText(output);
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = output;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+  }
+  copyLabel.value = '已复制';
+  window.setTimeout(() => {
+    if (copyLabel.value === '已复制') copyLabel.value = '';
+  }, 1200);
+}
+
+async function reloadHistory() {
+  try {
+    history.value = await unwrap(commands.historyList());
+  } catch {
+    history.value = [];
+  }
+}
+
+async function clearHistory() {
+  await unwrap(commands.historyClear());
+  await reloadHistory();
+}
+
+function providerView(id: string) {
+  return settings.value?.providers.find((provider) => provider.id === id) ?? null;
+}
+
+function viewToConfig(view: ProviderView): ProviderConfig_Serialize {
+  return {
+    enabled: view.enabled,
+    baseUrl: view.baseUrl,
+    model: view.model,
+    kind: view.kind,
+    temperature: view.temperature,
+    maxTokens: view.maxTokens,
+    formality: view.formality,
+  };
+}
+
+function buildConfig(): ProvidersConfig_Serialize {
+  const snapshot = settings.value;
+  if (!snapshot) throw new Error('设置尚未加载');
+  const config = (id: string) => viewToConfig(providerView(id) ?? {
+    id,
+    label: id,
+    enabled: false,
+    hasKey: false,
+    kind: null,
+    baseUrl: null,
+    model: null,
+    temperature: null,
+    maxTokens: null,
+    formality: null,
+    testable: id !== 'youdao',
+  });
+  return {
+    deepl: config('deepl'),
+    llm: config('llm'),
+    youdao: config('youdao'),
+    defaultTranslate: snapshot.defaultTranslate,
+    writeHistory: snapshot.writeHistory,
+  };
+}
+
+async function saveSettings() {
+  try {
+    settings.value = await unwrap(commands.providersSave(buildConfig()));
+  } catch (err) {
+    translateError.value = {
+      provider: 'settings',
+      code: 'invalid_config',
+      message: String(err),
+      hint: null,
+      copyable: `[jiti] settings ${String(err)}`,
+    };
+  }
+}
+
+async function loadSettings() {
+  try {
+    settings.value = await unwrap(commands.providersSnapshot());
+    accessStatus.value = await commands.accessibilityStatus();
+  } catch (err) {
+    PLACEHOLDERS.settings.line = `设置加载失败：${String(err)}`;
+  }
+}
+
+function onToggleProvider(id: string, event: Event) {
+  const view = providerView(id);
+  if (!view) return;
+  view.enabled = (event.target as HTMLInputElement).checked;
+  void saveSettings();
+}
+
+function onProviderField(id: string, field: 'baseUrl' | 'model', event: Event) {
+  const view = providerView(id);
+  if (!view) return;
+  const value = (event.target as HTMLInputElement).value;
+  if (field === 'baseUrl') view.baseUrl = value;
+  else view.model = value;
+  void saveSettings();
+}
+
+function onDefaultChange(event: Event) {
+  if (!settings.value) return;
+  settings.value.defaultTranslate = (event.target as HTMLSelectElement).value;
+  void saveSettings();
+}
+
+function onWriteHistory(event: Event) {
+  if (!settings.value) return;
+  settings.value.writeHistory = (event.target as HTMLInputElement).checked;
+  void saveSettings();
+}
+
+async function saveKey(id: string) {
+  const key = (keyInputs.value[id] ?? '').trim();
+  await unwrap(commands.providerSaveApiKey(id, key));
+  keyInputs.value[id] = '';
+  await loadSettings();
+}
+
+async function testProvider(id: string) {
+  testing.value[id] = true;
+  try {
+    testResults.value[id] = await unwrap(commands.providerTest(id));
+  } catch (err) {
+    testResults.value[id] = { ok: false, reason: String(err) };
+  } finally {
+    testing.value[id] = false;
+  }
+}
+
+async function openAccessibility() {
+  await unwrap(commands.openAccessibilitySettings());
+}
+
+function formatTime(value: string) {
+  const date = new Date(value.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+const statusText = computed(() => {
+  const snapshot = settings.value;
+  if (!snapshot) return 'M0 骨架 · 引擎未配置';
+  const active = snapshot.providers.find((provider) => provider.id === snapshot.defaultTranslate);
+  if (!active) return '引擎未设置';
+  return `${active.label} · ${active.hasKey ? 'Key 已配置' : 'Key 未配置'}`;
+});
+
+const placeholder = computed(() => {
+  if (store.activeMode === 'translate') return '输入文本，或选中一段文字后按 ⌥⌘T';
+  if (store.activeMode === 'grammar') return '语法检查 · M2';
+  return TABS.find((tab) => tab.key === store.activeMode)?.label ?? '输入';
+});
 
 async function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
@@ -43,37 +292,52 @@ async function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     store.cycleMode(e.shiftKey ? -1 : 1);
     searchEl.value?.focus();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+    const tag = (document.activeElement as HTMLElement | null)?.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && translateResult.value) {
+      e.preventDefault();
+      await copyResult();
+    }
   }
 }
 
 function onInputFocus(e: FocusEvent) {
-  // §8.3：聚焦即全选，可直接替换
   (e.target as HTMLInputElement).select();
-}
-
-function onShellClick(e: MouseEvent) {
-  // 点面板空白处聚焦输入框（面板默认不夺焦，用户点击后进入可输入态）
-  const target = e.target as HTMLElement;
-  if (!target.closest('button, input, a')) {
-    searchEl.value?.focus();
-  }
 }
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  unlistenHotkey = await listen<string>('hotkey://pressed', (e) => {
-    store.onHotkey(e.payload as HotkeyKind);
+  unlistenHotkey = await listen<string>('hotkey://pressed', (event) => {
+    const kind = event.payload as HotkeyKind;
+    store.onHotkey(kind);
+    if (kind === 'translate') void captureTranslate();
   });
-  unlistenVisibility = await listen<string>('panel://visibility', (e) => {
-    store.onVisibility(e.payload === 'shown');
+  unlistenVisibility = await listen<string>('panel://visibility', (event) => {
+    store.onVisibility(event.payload === 'shown');
   });
+  unlistenEngineError = await events.engineError.listen((event) => {
+    translateError.value = event.payload;
+    if (store.activeMode === 'translate') translateStatus.value = 'error';
+  });
+  await loadSettings();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   unlistenHotkey?.();
   unlistenVisibility?.();
+  unlistenEngineError?.();
 });
+
+watch(
+  () => store.activeMode,
+  (mode) => {
+    if (mode === 'history') void reloadHistory();
+    if (mode === 'settings') void loadSettings();
+  },
+);
 </script>
 
 <template>
@@ -84,10 +348,11 @@ onBeforeUnmount(() => {
         v-model="store.input"
         class="search"
         type="text"
-        placeholder="输入文本，或选中一段文字后按 ⌥⌘T / ⌥⌘G …"
+        :placeholder="placeholder"
         spellcheck="false"
         autocomplete="off"
         @focus="onInputFocus"
+        @keydown.enter.prevent="store.activeMode === 'translate' && runTranslate()"
       />
     </header>
 
@@ -111,7 +376,192 @@ onBeforeUnmount(() => {
     </nav>
 
     <main class="content">
-      <div class="placeholder" :key="store.activeMode">
+      <section v-if="store.activeMode === 'translate'" class="translate-view">
+        <div class="toolbar">
+          <select v-model="target" class="native-select" aria-label="目标语言">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+          <button
+            class="action"
+            type="button"
+            :disabled="translateStatus === 'loading' || !store.input.trim()"
+            @click="runTranslate()"
+          >
+            <IconPlayerPlay :size="14" :stroke-width="1.75" />
+            翻译
+          </button>
+          <span class="spacer"></span>
+          <button
+            v-if="translateResult"
+            class="icon-btn"
+            type="button"
+            aria-label="复制结果"
+            title="复制结果"
+            @click="copyResult"
+          >
+            <IconCopy :size="15" :stroke-width="1.75" />
+          </button>
+          <span v-if="copyLabel" class="copy-label">{{ copyLabel }}</span>
+        </div>
+
+        <div v-if="translateStatus === 'loading'" class="state-box" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>正在翻译</span>
+        </div>
+        <div v-else-if="translateStatus === 'error' && translateError" class="error-box" aria-live="assertive">
+          <div class="error-title">{{ translateError.code }} · {{ translateError.message }}</div>
+          <div v-if="translateError.hint" class="muted">{{ translateError.hint }}</div>
+          <code class="copyable">{{ translateError.copyable }}</code>
+        </div>
+        <div v-else-if="translateResult" class="result-box">
+          <p class="output">{{ translateResult.output }}</p>
+          <div class="meta">
+            <span>{{ translateResult.engine }}</span>
+            <span v-if="translateResult.detectedFrom">{{ translateResult.detectedFrom }} → {{ translateResult.target }}</span>
+            <span>{{ translateResult.durationMs }} ms</span>
+          </div>
+        </div>
+        <div v-else class="state-box">
+          <IconLanguage :size="26" :stroke-width="1.5" />
+          <span>输入文本，或选中一段文字后按 ⌥⌘T</span>
+        </div>
+      </section>
+
+      <section v-else-if="store.activeMode === 'history'" class="history-view">
+        <div class="pane-header">
+          <span>历史记录</span>
+          <button
+            class="action subtle"
+            type="button"
+            :disabled="history.length === 0"
+            @click="clearHistory"
+          >
+            <IconTrash :size="14" :stroke-width="1.75" />
+            清空
+          </button>
+        </div>
+        <div v-if="history.length === 0" class="state-box">
+          <IconHistory :size="26" :stroke-width="1.5" />
+          <span>暂无历史</span>
+        </div>
+        <ul v-else class="history-list">
+          <li v-for="entry in history" :key="entry.id" class="history-row">
+            <div class="history-input">{{ entry.input }}</div>
+            <div class="history-output">{{ entry.output }}</div>
+            <div class="meta">
+              <span>{{ entry.engine }}</span>
+              <span>{{ entry.durationMs }} ms</span>
+              <span>{{ formatTime(entry.createdAt) }}</span>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <section v-else-if="store.activeMode === 'settings'" class="settings-view">
+        <div
+          v-if="accessStatus && accessStatus.platform === 'macos' && !accessStatus.trusted"
+          class="permission-card"
+        >
+          <span>辅助功能权限未开启</span>
+          <p class="muted">{{ accessStatus.hint }}</p>
+          <button class="action" type="button" @click="openAccessibility">打开系统设置</button>
+        </div>
+
+        <div class="pane-header">
+          <span>引擎与 Key</span>
+          <button class="action subtle" type="button" @click="loadSettings">刷新</button>
+        </div>
+
+        <div v-if="settings" class="setting-row">
+          <label class="field-label" for="default-engine">默认引擎</label>
+          <select
+            id="default-engine"
+            class="native-select"
+            :value="settings.defaultTranslate"
+            @change="onDefaultChange"
+          >
+            <option v-for="provider in settings.providers" :key="provider.id" :value="provider.id">
+              {{ provider.label }}
+            </option>
+          </select>
+          <label class="check">
+            <input type="checkbox" :checked="settings.writeHistory" @change="onWriteHistory" />
+            写历史
+          </label>
+        </div>
+
+        <div v-if="settings" class="provider-stack">
+          <div v-for="provider in settings.providers" :key="provider.id" class="provider-card">
+            <div class="provider-head">
+              <strong>{{ provider.label }}</strong>
+              <label class="toggle">
+                <input
+                  type="checkbox"
+                  :checked="provider.enabled"
+                  @change="onToggleProvider(provider.id, $event)"
+                />
+                <span>{{ provider.enabled ? '已启用' : '未启用' }}</span>
+              </label>
+            </div>
+            <div class="field-grid">
+              <label class="field-label">Base URL</label>
+              <input
+                class="text-input"
+                type="url"
+                :value="provider.baseUrl ?? ''"
+                spellcheck="false"
+                @change="onProviderField(provider.id, 'baseUrl', $event)"
+              />
+              <template v-if="provider.id === 'llm'">
+                <label class="field-label">Model</label>
+                <input
+                  class="text-input"
+                  type="text"
+                  :value="provider.model ?? ''"
+                  spellcheck="false"
+                  @change="onProviderField(provider.id, 'model', $event)"
+                />
+              </template>
+            </div>
+            <div class="key-row">
+              <input
+                class="text-input mono"
+                type="password"
+                v-model="keyInputs[provider.id]"
+                placeholder="API Key"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button class="action subtle" type="button" @click="saveKey(provider.id)">
+                保存 Key
+              </button>
+            </div>
+            <div class="test-row">
+              <span class="badge" :class="{ on: provider.hasKey }">
+                {{ provider.hasKey ? 'Key 已配置' : 'Key 未配置' }}
+              </span>
+              <button
+                v-if="provider.testable"
+                class="action subtle"
+                type="button"
+                :disabled="testing[provider.id]"
+                @click="testProvider(provider.id)"
+              >
+                {{ testing[provider.id] ? '测试中' : '测试连接' }}
+              </button>
+              <span v-if="testResults[provider.id]" class="test-result" :class="{ fail: !testResults[provider.id]?.ok }">
+                {{ testResults[provider.id]?.ok ? 'OK' : '失败' }}
+              </span>
+            </div>
+            <p v-if="testResults[provider.id]?.reason" class="test-reason">
+              {{ testResults[provider.id]?.reason }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div v-else class="placeholder" :key="store.activeMode">
         <component :is="PLACEHOLDERS[store.activeMode].icon" :size="28" :stroke-width="1.5" />
         <p>{{ PLACEHOLDERS[store.activeMode].line }}</p>
       </div>
@@ -120,7 +570,7 @@ onBeforeUnmount(() => {
     <footer class="status chrome">
       <span class="status-item">
         <span class="dot" aria-hidden="true"></span>
-        M0 骨架 · 引擎未配置
+        {{ statusText }}
       </span>
       <span class="spacer"></span>
       <span class="status-item mono">Esc 隐藏 · Tab 切模式</span>

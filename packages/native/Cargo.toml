@@ -16,11 +16,15 @@ tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-store = "2"
-tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript", "derive"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function", "serde_json"] }
 specta-typescript = "=0.0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+async-trait = "0.1"
+keyring = "4"
+reqwest = { version = "0.13", features = ["json"] }
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 
 # macOS 原生缝（objc2）：无焦点面板 / 防节流 / 首帧同步 / 光标定位
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -28,7 +32,27 @@ objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 objc2-core-graphics = "0.3"
+objc2-core-foundation = "0.3"
+objc2-application-services = "0.3"
 block2 = "0.6"
+
+# Windows 原生缝：UIA 读取选中文本 + Win32 剪贴板字格式级还原
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_UI_Accessibility",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+futures = "0.3"
+mockito = "1"
+tempfile = "3"
 
 [profile.dev]
 incremental = true

@@ -2,7 +2,7 @@
 //! 生成的 `../ui/src/ipc/bindings.ts` 由 debug 构建自动导出，勿手改。
 
 use tauri::Wry as TauriRuntime;
-use tauri_specta::{collect_commands, Builder as SpectaBuilder};
+use tauri_specta::{collect_commands, collect_events, Builder as SpectaBuilder};
 
 /// 命令以完整模块路径传入：tauri/specta 的辅助宏（`__cmd_*` / `__specta__fn_*`）
 /// 走“函数所在模块的 pub use”路径解析（见 commands/panel.rs 等处的生成物），
@@ -14,7 +14,17 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
         crate::commands::settings::settings_get,
         crate::commands::settings::settings_set,
         crate::commands::selection::get_selected_text,
+        crate::commands::translate::translate,
+        crate::commands::providers::providers_snapshot,
+        crate::commands::providers::providers_save,
+        crate::commands::providers::provider_save_api_key,
+        crate::commands::providers::provider_test,
+        crate::commands::history::history_list,
+        crate::commands::history::history_clear,
+        crate::commands::accessibility::accessibility_status,
+        crate::commands::accessibility::open_accessibility_settings,
     ])
+    .events(collect_events![crate::providers::error::EngineErrorEvent])
 }
 
 /// 仅 debug 构建导出（M0 阶段前端必须能立即拿到绑定）。
@@ -37,8 +47,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
         .expect("specta exporter panicked");
 }
 
-/// Request/Response 与 Event 是互不相交的两个形状（§3.5）：
-/// M0 事件（hotkey://pressed、panel://visibility）保持普通 emit/listen，不进 specta。
+/// Request/Response 与 Event 是互不相交的两个形状（§3.5）。
+/// M1 的 `engine://error` 已纳入 specta 单源事件；
+/// M0 的 `hotkey://pressed` / `panel://visibility` 保持普通 emit/listen 契约。
 ///
 /// §3.5 要求的版本化常量：破坏性变更必升。M0 暂无消费方，M1 接入 IPC 日志时启用。
 #[allow(dead_code)]

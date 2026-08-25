@@ -21,6 +21,7 @@ fn stamp_show() {
 }
 
 #[cfg(debug_assertions)]
+#[allow(dead_code)] // 仅在 macOS reveal 路径使用；Windows 构建下避免死代码告警
 fn stamp_reveal() {
     if let Ok(g) = SHOW_STAMP.try_lock() {
         if let Some(t) = *g {
