@@ -1,9 +1,22 @@
 //! 选中文本读取（§4.5 降级链：AX/UIA → 剪贴板模拟 → 手动输入）。
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
 use tauri_specta::Event;
+
+/// 每次翻译/语法热键 +1。过期的剪贴板兜底不得写回上一次选区。
+static CAPTURE_EPOCH: AtomicU32 = AtomicU32::new(0);
+
+pub fn begin_capture() -> u32 {
+    CAPTURE_EPOCH.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+pub fn is_current_epoch(epoch: u32) -> bool {
+    CAPTURE_EPOCH.load(Ordering::SeqCst) == epoch
+}
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -46,12 +59,17 @@ impl SelectedText {
 pub struct HotkeyPressedEvent {
     pub mode: String,
     pub selection: SelectedText,
+    pub epoch: u32,
 }
 
-/// 剪贴板兜底稍后完成时补发（AX/UIA 为空才走）。
+/// 剪贴板稍后完成时补发（与对应热键的 epoch 对齐；可覆盖滞后的 AX/UIA）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
 #[tauri_specta(event_name = "capture://changed")]
-pub struct CaptureChangedEvent(pub SelectedText);
+pub struct CaptureChangedEvent {
+    pub epoch: u32,
+    pub selection: SelectedText,
+}
 
 /// AX/UIA 首选路径：快、必须在主线程。不含剪贴板睡眠。
 pub fn read_preferred() -> SelectedText {
@@ -81,15 +99,19 @@ pub fn read_selected_text() -> SelectedText {
     SelectedText::empty()
 }
 
-/// AX/UIA 为空时：等热键修饰键松开 → 模拟复制 → 120ms 后读剪贴板并还原。
+/// 等热键修饰键松开 → 模拟复制 → 剪贴板有变更才补发。
+/// 即使 AX/UIA 已有文本也跑：浏览器选区经常滞后，剪贴板才是当前选中。
 /// 不阻塞面板 reveal。
-pub fn begin_clipboard_fallback(app: AppHandle) {
+pub fn begin_clipboard_fallback(app: AppHandle, epoch: u32) {
     #[cfg(target_os = "macos")]
-    macos::begin_clipboard_fallback(app);
+    macos::begin_clipboard_fallback(app, epoch);
     #[cfg(target_os = "windows")]
-    windows::begin_clipboard_fallback(app);
+    windows::begin_clipboard_fallback(app, epoch);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let _ = app;
+    {
+        let _ = app;
+        let _ = epoch;
+    }
 }
 
 #[cfg(test)]
@@ -107,5 +129,15 @@ mod tests {
         let s = SelectedText::empty();
         assert!(s.is_blank());
         assert_eq!(s.method, SelectionMethod::Manual);
+    }
+
+    #[test]
+    fn later_capture_invalidates_previous_epoch() {
+        let first = begin_capture();
+        assert!(is_current_epoch(first));
+        let second = begin_capture();
+        assert!(!is_current_epoch(first));
+        assert!(is_current_epoch(second));
+        assert!(second > first);
     }
 }

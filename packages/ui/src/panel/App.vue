@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   IconAbc,
@@ -27,6 +27,7 @@ import type {
   TranslateResult,
   SelectedText,
 } from '../ipc/bindings';
+import { isStalePreferredCapture, shouldApplyCapture } from '../capture';
 import { isRecordingHotkey, shouldHidePanelOnEscape } from '../hotkeys';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
@@ -65,6 +66,10 @@ const keyInputs = ref<Record<string, string>>({});
 const testResults = ref<Record<string, TestProviderResult | null>>({});
 const testing = ref<Record<string, boolean>>({});
 const copyLabel = ref('');
+const captureEpoch = ref(0);
+const inputDirty = ref(false);
+const lastCommitted = ref('');
+let applyingCapture = false;
 
 let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
@@ -116,15 +121,25 @@ async function runTranslate(text = store.input) {
   }
 }
 
-async function applyCapturedText(selected: SelectedText, onlyIfEmpty = false) {
-  if (onlyIfEmpty && store.input.trim()) return;
+function applyCapturedText(selected: SelectedText, epoch: number) {
+  if (!shouldApplyCapture(epoch, captureEpoch.value, inputDirty.value)) return;
+  if (isStalePreferredCapture(selected.text, selected.method, lastCommitted.value)) return;
+  applyingCapture = true;
   store.input = selected.text;
-  // AX 为空时，Rust 随后才会执行 Cmd+C 兜底。此时绝不能抢走前台应用的焦点，
-  // 否则模拟复制会复制 Jiti 的空输入框，而不是用户刚才选中的文本。
+  void nextTick(() => {
+    applyingCapture = false;
+  });
+  // 捕获后绝不抢焦点：否则下次热键会读到自己输入框里的旧选区。
   if (!selected.text.trim()) return;
+  lastCommitted.value = selected.text;
+  if (store.activeMode !== 'translate') return;
   target.value = guessTarget(selected.text);
   void runTranslate(selected.text);
-  searchEl.value?.focus();
+}
+
+function onSearchInput() {
+  if (applyingCapture) return;
+  inputDirty.value = true;
 }
 
 async function copyResult() {
@@ -394,14 +409,24 @@ onMounted(async () => {
   unlistenHotkey = await events.hotkeyPressed.listen((event) => {
     const kind = event.payload.mode as HotkeyKind;
     store.onHotkey(kind);
-    if (store.activeMode === 'translate') {
+    if (kind !== 'translate' && kind !== 'grammar') return;
+    captureEpoch.value = event.payload.epoch;
+    inputDirty.value = false;
+    applyingCapture = true;
+    store.input = '';
+    void nextTick(() => {
+      applyingCapture = false;
+    });
+    if (kind === 'translate') {
       translateStatus.value = 'idle';
-      void applyCapturedText(event.payload.selection);
+      translateResult.value = null;
+      translateError.value = null;
     }
+    applyCapturedText(event.payload.selection, event.payload.epoch);
   });
   unlistenCapture = await events.captureChanged.listen((event) => {
-    if (store.activeMode !== 'translate') return;
-    void applyCapturedText(event.payload, true);
+    if (store.activeMode !== 'translate' && store.activeMode !== 'grammar') return;
+    applyCapturedText(event.payload.selection, event.payload.epoch);
   });
   unlistenVisibility = await listen<string>('panel://visibility', (event) => {
     store.onVisibility(event.payload === 'shown');
@@ -466,6 +491,7 @@ watch(
         spellcheck="false"
         autocomplete="off"
         @focus="onInputFocus"
+        @input="onSearchInput"
         @keydown.enter.prevent="store.activeMode === 'translate' && runTranslate()"
       />
     </header>

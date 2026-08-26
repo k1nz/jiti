@@ -8,37 +8,38 @@ use tauri_specta::{collect_commands, collect_events, Builder as SpectaBuilder};
 /// 走“函数所在模块的 pub use”路径解析（见 commands/panel.rs 等处的生成物），
 /// 不允许用 `use crate::__cmd_*` 直接导入（Rust 对 proc-macro 生成宏的限制）。
 pub fn generate() -> SpectaBuilder<TauriRuntime> {
-    SpectaBuilder::<TauriRuntime>::new().commands(collect_commands![
-        crate::commands::panel::show_popup,
-        crate::commands::panel::hide_popup,
-        crate::commands::settings::settings_get,
-        crate::commands::settings::settings_set,
-        crate::commands::selection::get_selected_text,
-        crate::commands::translate::translate,
-        crate::commands::providers::providers_snapshot,
-        crate::commands::providers::providers_save,
-        crate::commands::providers::provider_save_api_key,
-        crate::commands::providers::provider_test,
-        crate::commands::history::history_list,
-        crate::commands::history::history_clear,
-        crate::commands::hotkeys::hotkeys_snapshot,
-        crate::commands::hotkeys::hotkeys_set,
-        crate::commands::hotkeys::hotkeys_reset,
-        crate::commands::hotkeys::hotkeys_suspend,
-        crate::commands::hotkeys::hotkeys_resume,
-        crate::commands::accessibility::accessibility_status,
-        crate::commands::accessibility::open_accessibility_settings,
-        crate::commands::permissions::permissions_snapshot,
-        crate::commands::permissions::request_permission,
-        crate::commands::permissions::open_permission_settings,
-        crate::commands::permissions::complete_onboarding,
-        crate::commands::permissions::restart_app,
-    ])
-    .events(collect_events![
-        crate::providers::error::EngineErrorEvent,
-        crate::services::selection::HotkeyPressedEvent,
-        crate::services::selection::CaptureChangedEvent,
-    ])
+    SpectaBuilder::<TauriRuntime>::new()
+        .commands(collect_commands![
+            crate::commands::panel::show_popup,
+            crate::commands::panel::hide_popup,
+            crate::commands::settings::settings_get,
+            crate::commands::settings::settings_set,
+            crate::commands::selection::get_selected_text,
+            crate::commands::translate::translate,
+            crate::commands::providers::providers_snapshot,
+            crate::commands::providers::providers_save,
+            crate::commands::providers::provider_save_api_key,
+            crate::commands::providers::provider_test,
+            crate::commands::history::history_list,
+            crate::commands::history::history_clear,
+            crate::commands::hotkeys::hotkeys_snapshot,
+            crate::commands::hotkeys::hotkeys_set,
+            crate::commands::hotkeys::hotkeys_reset,
+            crate::commands::hotkeys::hotkeys_suspend,
+            crate::commands::hotkeys::hotkeys_resume,
+            crate::commands::accessibility::accessibility_status,
+            crate::commands::accessibility::open_accessibility_settings,
+            crate::commands::permissions::permissions_snapshot,
+            crate::commands::permissions::request_permission,
+            crate::commands::permissions::open_permission_settings,
+            crate::commands::permissions::complete_onboarding,
+            crate::commands::permissions::restart_app,
+        ])
+        .events(collect_events![
+            crate::providers::error::EngineErrorEvent,
+            crate::services::selection::HotkeyPressedEvent,
+            crate::services::selection::CaptureChangedEvent,
+        ])
 }
 
 /// 仅 debug 构建导出（M0 阶段前端必须能立即拿到绑定）。
@@ -67,7 +68,7 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 ///
 /// §3.5 要求的版本化常量：破坏性变更必升。M0 暂无消费方，M1 接入 IPC 日志时启用。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[cfg(test)]
 mod tests {

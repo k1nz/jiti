@@ -46,8 +46,11 @@ export type AccessibilityStatus = {
 	hint: string | null,
 };
 
-/**  剪贴板兜底稍后完成时补发（AX/UIA 为空才走）。 */
-export type CaptureChangedEvent = SelectedText;
+/**  剪贴板稍后完成时补发（与对应热键的 epoch 对齐；可覆盖滞后的 AX/UIA）。 */
+export type CaptureChangedEvent = {
+	epoch: number,
+	selection: SelectedText,
+};
 
 /**  specta 单源事件契约；Tauri 侧实际事件名保持 `engine://error`（§3.5）。 */
 export type EngineErrorEvent = EngineErrorPayload;
@@ -90,6 +93,7 @@ export type HotkeyId = "translate" | "grammar" | "panel";
 export type HotkeyPressedEvent = {
 	mode: string,
 	selection: SelectedText,
+	epoch: number,
 };
 
 export type HotkeysSnapshot = {

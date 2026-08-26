@@ -218,13 +218,13 @@ tauri_specta::ts::export(
 按**降级链**实现（每个平台一个 capture 模块）：
 
 **macOS**
-1. **AX（首选）**：`objc2` 调 `AXUIElement`（前台 App → 聚焦元素 → `kAXSelectedTextAttribute`）。需**辅助功能权限**。
-2. **剪贴板模拟（兜底）**：`CGEvent` 模拟 Cmd+C → 120ms 后读 `NSPasteboard` → 立刻回写恢复原剪贴板。
-3. 都拿不到 → Vue 进入「手动输入」友好空态。
+1. **AX（首选）**：`objc2` 调 `AXUIElement`（前台 App → 聚焦元素 → `kAXSelectedTextAttribute`）。需**辅助功能权限**。浏览器选区经常滞后，AX 只作乐观预填。
+2. **剪贴板模拟（始终跑）**：记下源进程 PID，等修饰键松开后 `CGEventPostToPid` 对该进程发 Cmd+C → 变更 `changeCount` 才采用 → 立刻回写恢复原剪贴板。每次热键一个 epoch，迟到的上一次复制不得写回输入框。
+3. 都拿不到 → Vue 进入「手动输入」友好空态。捕获后不抢焦点。
 
 **Windows**
 1. **UI Automation（首选）**：`windows` crate 取聚焦元素 `TextPattern2/ValuePattern`。
-2. **Ctrl+C 模拟（兜底）** + 剪贴板恢复。
+2. **Ctrl+C 模拟（始终跑）** + `GetClipboardSequenceNumber` 确认复制发生 + 剪贴板恢复；同样用 epoch 丢弃过期结果。
 3. 空 → 手动输入态。
 
 ### 4.6 WebView 存活指南（防坑清单，开工前必读）

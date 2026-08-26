@@ -5,14 +5,10 @@ use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
 
-use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
-use objc2_application_services::{
-    AXError, AXIsProcessTrusted, AXUIElement, AXValue, AXValueType,
-};
+use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString, NSWorkspace};
+use objc2_application_services::{AXError, AXIsProcessTrusted, AXUIElement, AXValue, AXValueType};
 use objc2_core_foundation::{CFRange, CFRetained, CFString, CFType, ConcreteType};
-use objc2_core_graphics::{
-    CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation,
-};
+use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID};
 use objc2_foundation::NSString;
 use tauri::AppHandle;
 use tauri_specta::Event;
@@ -24,6 +20,11 @@ const KEY_COMMAND: u16 = 55; // kVK_Command
 
 /// 仅 AX（含 SelectedTextRange 回退）。主线程、无睡眠。
 pub fn read_preferred() -> SelectedText {
+    if frontmost_is_self() {
+        #[cfg(debug_assertions)]
+        eprintln!("[jiti] selection AX skipped: Jiti is frontmost");
+        return SelectedText::empty();
+    }
     let trusted = unsafe { AXIsProcessTrusted() };
     #[cfg(debug_assertions)]
     eprintln!("[jiti] selection AX trusted={trusted}");
@@ -55,49 +56,82 @@ pub fn read() -> SelectedText {
     clipboard_fallback_blocking()
 }
 
-/// 热键路径：不阻塞 reveal。等 ⌥/⌘ 松开后再发 Private Cmd+C。
-pub fn begin_clipboard_fallback(app: AppHandle) {
+/// 热键路径：不阻塞 reveal。对着热键按下时的源进程发 Cmd+C，不依赖之后谁是前台。
+pub fn begin_clipboard_fallback(app: AppHandle, epoch: u32) {
+    let target_pid = match frontmost_pid() {
+        Some(pid) if pid as u32 != std::process::id() => pid,
+        _ => return,
+    };
     std::thread::spawn(move || {
+        if !super::is_current_epoch(epoch) {
+            return;
+        }
         wait_for_hotkey_modifiers_up();
+        if !super::is_current_epoch(epoch) {
+            return;
+        }
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         let posted = app.clone();
         let _ = posted.run_on_main_thread(move || {
+            let pasteboard = NSPasteboard::generalPasteboard();
+            let change_count = pasteboard.changeCount();
             let original = snapshot_clipboard_string();
-            post_cmd_c();
-            let _ = tx.send(original);
+            post_cmd_c_to_pid(target_pid);
+            let _ = tx.send(Some((original, change_count)));
         });
-        let Ok(original) = rx.recv_timeout(Duration::from_millis(800)) else {
+        let Ok(Some((original, change_count))) = rx.recv_timeout(Duration::from_millis(800)) else {
             return;
         };
-        std::thread::sleep(Duration::from_millis(120));
+        std::thread::sleep(Duration::from_millis(180));
+        if !super::is_current_epoch(epoch) {
+            let restore_app = app.clone();
+            let _ = restore_app.run_on_main_thread(move || {
+                restore_clipboard_string(original);
+            });
+            return;
+        }
         let emit_app = app.clone();
         let _ = app.run_on_main_thread(move || {
+            let pasteboard = NSPasteboard::generalPasteboard();
+            let changed = pasteboard.changeCount() != change_count;
             let text = snapshot_clipboard_string().unwrap_or_default();
             restore_clipboard_string(original);
-            if text.trim().is_empty() {
+            if !changed || text.trim().is_empty() || !super::is_current_epoch(epoch) {
                 #[cfg(debug_assertions)]
-                eprintln!("[jiti] selection clipboard fallback returned no text");
+                eprintln!("[jiti] selection clipboard fallback skipped changed={changed}");
                 return;
             }
             #[cfg(debug_assertions)]
             eprintln!("[jiti] selection clipboard captured {} bytes", text.len());
-            let _ = CaptureChangedEvent(SelectedText {
-                text,
-                method: SelectionMethod::Clipboard,
-            })
+            let _ = CaptureChangedEvent {
+                epoch,
+                selection: SelectedText {
+                    text,
+                    method: SelectionMethod::Clipboard,
+                },
+            }
             .emit(&emit_app);
         });
     });
 }
 
 fn clipboard_fallback_blocking() -> SelectedText {
+    let Some(pid) = frontmost_pid() else {
+        return SelectedText::empty();
+    };
+    if pid as u32 == std::process::id() {
+        return SelectedText::empty();
+    }
     wait_for_hotkey_modifiers_up();
+    let pasteboard = NSPasteboard::generalPasteboard();
+    let change_count = pasteboard.changeCount();
     let original = snapshot_clipboard_string();
-    post_cmd_c();
-    std::thread::sleep(Duration::from_millis(120));
+    post_cmd_c_to_pid(pid);
+    std::thread::sleep(Duration::from_millis(180));
+    let changed = pasteboard.changeCount() != change_count;
     let text = snapshot_clipboard_string().unwrap_or_default();
     restore_clipboard_string(original);
-    if text.trim().is_empty() {
+    if !changed || text.trim().is_empty() {
         SelectedText::empty()
     } else {
         SelectedText {
@@ -105,6 +139,25 @@ fn clipboard_fallback_blocking() -> SelectedText {
             method: SelectionMethod::Clipboard,
         }
     }
+}
+
+fn frontmost_pid() -> Option<libc::pid_t> {
+    NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .map(|app| app.processIdentifier())
+}
+
+fn frontmost_is_self() -> bool {
+    frontmost_pid().is_some_and(|pid| pid as u32 == std::process::id())
+}
+
+fn ax_pid_is_self(element: &AXUIElement) -> bool {
+    let mut pid: libc::pid_t = 0;
+    let Some(out) = NonNull::new(&mut pid) else {
+        return false;
+    };
+    let err = unsafe { element.pid(out) };
+    err == AXError::Success && pid as u32 == std::process::id()
 }
 
 fn ax_selected_text() -> Option<String> {
@@ -116,6 +169,9 @@ fn ax_selected_text() -> Option<String> {
     let selected_text = CFString::from_static_str("AXSelectedText");
 
     if let Some(app) = ax_attr::<AXUIElement>(&system, &focused_app) {
+        if ax_pid_is_self(&app) {
+            return None;
+        }
         if let Some(focused) = ax_attr::<AXUIElement>(&app, &focused_element) {
             if let Some(text) = nonempty_ax_string(&focused, &selected_text) {
                 return Some(text);
@@ -161,8 +217,7 @@ fn ax_selected_via_range(element: &AXUIElement) -> Option<String> {
     let ok = unsafe {
         range_val.value(
             AXValueType::CFRange,
-            NonNull::new((&mut range as *mut CFRange).cast::<c_void>())
-                .expect("range 指针恒有效"),
+            NonNull::new((&mut range as *mut CFRange).cast::<c_void>()).expect("range 指针恒有效"),
         )
     };
     if !ok || range.length <= 0 {
@@ -183,10 +238,7 @@ fn ax_selected_via_range(element: &AXUIElement) -> Option<String> {
     }
 }
 
-fn ax_attr<T: ConcreteType>(
-    element: &AXUIElement,
-    attribute: &CFString,
-) -> Option<CFRetained<T>> {
+fn ax_attr<T: ConcreteType>(element: &AXUIElement, attribute: &CFString) -> Option<CFRetained<T>> {
     let mut value: *const CFType = std::ptr::null();
     let err = unsafe {
         element.copy_attribute_value(
@@ -217,16 +269,15 @@ fn wait_for_hotkey_modifiers_up() {
     }
 }
 
-fn post_cmd_c() {
+fn post_cmd_c_to_pid(pid: libc::pid_t) {
     // Private：不与当前 HID 修饰键合并，否则 ⌥ 仍按下时会变成 ⌥⌘C。
-    // 发送完整的物理键序列，而不是只给 C 事件附加 MaskCommand；部分应用
-    // 只接受实际的 Command key-down / key-up 组合。
+    // 发给热键按下时的源进程，避免面板成为前台后复制到自己的输入框。
     let source = CGEventSource::new(CGEventSourceStateID::Private);
 
     let post = |key: u16, key_down: bool, flags: CGEventFlags| {
         if let Some(event) = CGEvent::new_keyboard_event(source.as_deref(), key, key_down) {
             CGEvent::set_flags(Some(&event), flags);
-            CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&event));
+            CGEvent::post_to_pid(pid, Some(&event));
         }
     };
 
@@ -258,6 +309,8 @@ fn restore_clipboard_string(original: Option<String>) {
     let pasteboard = NSPasteboard::generalPasteboard();
     pasteboard.clearContents();
     if let Some(text) = original {
-        pasteboard.setString_forType(&NSString::from_str(&text), unsafe { NSPasteboardTypeString });
+        pasteboard.setString_forType(&NSString::from_str(&text), unsafe {
+            NSPasteboardTypeString
+        });
     }
 }

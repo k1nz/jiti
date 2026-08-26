@@ -11,8 +11,7 @@ use tauri_specta::Event;
 /// 开发期遥测（§13 感知目标：热键→弹窗暖启 <30ms）：
 /// show_panel_inner 记录发起时刻，macos::reveal 翻转 alpha 时打印耗时。
 #[cfg(debug_assertions)]
-static SHOW_STAMP: std::sync::Mutex<Option<std::time::Instant>> =
-    std::sync::Mutex::new(None);
+static SHOW_STAMP: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
 #[cfg(debug_assertions)]
 fn stamp_show() {
@@ -26,7 +25,10 @@ fn stamp_show() {
 fn stamp_reveal() {
     if let Ok(g) = SHOW_STAMP.try_lock() {
         if let Some(t) = *g {
-            eprintln!("[jiti] panel revealed after {:.1} ms since show", t.elapsed().as_secs_f64() * 1000.0);
+            eprintln!(
+                "[jiti] panel revealed after {:.1} ms since show",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
         }
     }
 }
@@ -75,17 +77,29 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
     let app = app.clone();
     let inner = app.clone();
     #[cfg(debug_assertions)]
-    eprintln!("[jiti] show_panel mode={} follow_cursor={}", mode.as_str(), follow_cursor);
+    eprintln!(
+        "[jiti] show_panel mode={} follow_cursor={}",
+        mode.as_str(),
+        follow_cursor
+    );
     let _ = app.run_on_main_thread(move || {
         // 显示前在主线程读选中（§3.4）。reveal 之后 AX 焦点可能已经不在原 App。
         // 托盘「显示面板」不走捕获：剪贴板回写过期 NSPasteboardItem 会抛 ObjC 异常并 abort。
         let capture = mode.captures_selection();
+        let epoch = if capture {
+            crate::services::selection::begin_capture()
+        } else {
+            0
+        };
         let selection = if capture {
             crate::services::selection::read_preferred()
         } else {
             crate::services::selection::SelectedText::empty()
         };
-        let need_clipboard = capture && selection.is_blank();
+        // 先记下源 PID 并开始等修饰键，再 reveal，避免剪贴板复制打到面板自己。
+        if capture {
+            crate::services::selection::begin_clipboard_fallback(inner.clone(), epoch);
+        }
         if let Some(win) = inner.get_webview_window("main") {
             if follow_cursor {
                 position_near_cursor(&win);
@@ -95,12 +109,10 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
         let _ = crate::services::selection::HotkeyPressedEvent {
             mode: mode.as_str().to_string(),
             selection,
+            epoch,
         }
         .emit(&inner);
         let _ = inner.emit("panel://visibility", "shown");
-        if need_clipboard {
-            crate::services::selection::begin_clipboard_fallback(inner.clone());
-        }
     });
 }
 
@@ -163,8 +175,8 @@ pub mod macos {
     use std::time::Duration;
 
     use objc2::runtime::{AnyClass, AnyObject};
-    use objc2::{msg_send, sel};
     use objc2::MainThreadMarker;
+    use objc2::{msg_send, sel};
     use objc2_app_kit::{
         NSApplication, NSApplicationActivationPolicy, NSEvent, NSScreen, NSWindow,
     };

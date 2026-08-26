@@ -2118,6 +2118,7 @@ dependencies = [
  "block2",
  "futures",
  "keyring",
+ "libc",
  "mockito",
  "objc2",
  "objc2-app-kit",

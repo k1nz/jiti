@@ -7,14 +7,14 @@ use tauri::AppHandle;
 use tauri_specta::Event;
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use windows::Win32::System::Com::{
-    CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, OpenClipboard,
     SetClipboardData,
 };
 use windows::Win32::System::Memory::{
-    GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
 };
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 use windows::Win32::UI::Accessibility::{
@@ -22,13 +22,22 @@ use windows::Win32::UI::Accessibility::{
     UIA_TextPatternId, UIA_ValuePatternId,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-    SendInput, VIRTUAL_KEY, VK_CONTROL, VK_C, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
+use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
 use super::{CaptureChangedEvent, SelectedText, SelectionMethod};
 
+#[link(name = "user32")]
+extern "system" {
+    fn GetClipboardSequenceNumber() -> u32;
+}
+
 pub fn read_preferred() -> SelectedText {
+    if foreground_is_self() {
+        return SelectedText::empty();
+    }
     if let Some(text) = uia_selected() {
         if !text.trim().is_empty() {
             return SelectedText {
@@ -54,43 +63,82 @@ pub fn read() -> SelectedText {
     SelectedText::empty()
 }
 
-pub fn begin_clipboard_fallback(app: AppHandle) {
+pub fn begin_clipboard_fallback(app: AppHandle, epoch: u32) {
+    let source_pid = foreground_pid();
+    if source_pid == 0 || source_pid == std::process::id() {
+        return;
+    }
     std::thread::spawn(move || {
+        if !super::is_current_epoch(epoch) {
+            return;
+        }
         wait_for_hotkey_modifiers_up();
+        if !super::is_current_epoch(epoch) {
+            return;
+        }
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         let posted = app.clone();
         let _ = posted.run_on_main_thread(move || {
+            if foreground_pid() != source_pid {
+                let _ = tx.send(None);
+                return;
+            }
+            let seq = unsafe { GetClipboardSequenceNumber() };
             let snap = unsafe { snapshot_clipboard() };
             if snap.is_some() {
                 send_ctrl_c();
             }
-            let _ = tx.send(snap);
+            let _ = tx.send(snap.map(|s| (s, seq)));
         });
-        let Ok(Some(snap)) = rx.recv_timeout(Duration::from_millis(800)) else {
+        let Ok(Some((snap, seq))) = rx.recv_timeout(Duration::from_millis(800)) else {
             return;
         };
-        std::thread::sleep(Duration::from_millis(120));
+        std::thread::sleep(Duration::from_millis(180));
+        if !super::is_current_epoch(epoch) {
+            let restore_app = app.clone();
+            let _ = restore_app.run_on_main_thread(move || unsafe {
+                restore_clipboard(snap);
+            });
+            return;
+        }
         let emit_app = app.clone();
         let _ = app.run_on_main_thread(move || {
+            let changed = unsafe { GetClipboardSequenceNumber() } != seq;
             let text = unsafe { read_selected_from_clipboard() }.unwrap_or_default();
             unsafe { restore_clipboard(snap) };
-            if text.trim().is_empty() {
+            if !changed || text.trim().is_empty() || !super::is_current_epoch(epoch) {
                 return;
             }
-            let _ = CaptureChangedEvent(SelectedText {
-                text,
-                method: SelectionMethod::Clipboard,
-            })
+            let _ = CaptureChangedEvent {
+                epoch,
+                selection: SelectedText {
+                    text,
+                    method: SelectionMethod::Clipboard,
+                },
+            }
             .emit(&emit_app);
         });
     });
 }
 
+fn foreground_pid() -> u32 {
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid
+    }
+}
+
+fn foreground_is_self() -> bool {
+    let pid = foreground_pid();
+    pid != 0 && pid == std::process::id()
+}
+
 fn uia_selected() -> Option<String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        let automation: IUIAutomation =
-            CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
+        let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
         let focused = automation.GetFocusedElement().ok()?;
 
         if let Ok(pattern) =
@@ -126,13 +174,22 @@ fn uia_selected() -> Option<String> {
 }
 
 fn clipboard_fallback() -> Option<String> {
+    if foreground_is_self() {
+        return None;
+    }
     wait_for_hotkey_modifiers_up();
+    let seq = unsafe { GetClipboardSequenceNumber() };
     let snapshot = unsafe { snapshot_clipboard() }?;
     send_ctrl_c();
-    std::thread::sleep(Duration::from_millis(120));
+    std::thread::sleep(Duration::from_millis(180));
+    let changed = unsafe { GetClipboardSequenceNumber() } != seq;
     let text = unsafe { read_selected_from_clipboard() }.unwrap_or_default();
     unsafe { restore_clipboard(snapshot) };
-    if text.trim().is_empty() { None } else { Some(text) }
+    if !changed || text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 #[derive(Default)]
