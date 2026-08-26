@@ -175,10 +175,11 @@ fn normalize_detected(s: &str) -> String {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
+    let taken: String = s.chars().take(max).collect();
+    if taken.chars().count() < s.chars().count() {
+        format!("{taken}…")
     } else {
-        format!("{}…", &s[..max])
+        taken
     }
 }
 

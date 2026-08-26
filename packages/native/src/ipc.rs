@@ -24,7 +24,11 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
         crate::commands::accessibility::accessibility_status,
         crate::commands::accessibility::open_accessibility_settings,
     ])
-    .events(collect_events![crate::providers::error::EngineErrorEvent])
+    .events(collect_events![
+        crate::providers::error::EngineErrorEvent,
+        crate::services::selection::HotkeyPressedEvent,
+        crate::services::selection::CaptureChangedEvent,
+    ])
 }
 
 /// 仅 debug 构建导出（M0 阶段前端必须能立即拿到绑定）。
@@ -48,8 +52,8 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 }
 
 /// Request/Response 与 Event 是互不相交的两个形状（§3.5）。
-/// M1 的 `engine://error` 已纳入 specta 单源事件；
-/// M0 的 `hotkey://pressed` / `panel://visibility` 保持普通 emit/listen 契约。
+/// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` 已纳入 specta 单源事件；
+/// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
 /// §3.5 要求的版本化常量：破坏性变更必升。M0 暂无消费方，M1 接入 IPC 日志时启用。
 #[allow(dead_code)]

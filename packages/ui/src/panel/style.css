@@ -82,11 +82,15 @@ body {
   -webkit-app-region: no-drag; /* chrome 区可交互，不参与拖拽 */
 }
 
-/* ── 输入框 ── */
+/* ── 输入框：padding 放在 header 上，避免 width:100% + 水平 margin 撑破窗口 ── */
+.search-wrap {
+  padding: 16px 14px 6px;
+}
+
 .search {
   -webkit-app-region: no-drag;
   width: 100%;
-  margin: 14px 14px 6px;
+  margin: 0;
   padding: 8px 12px;
   font: inherit;
   font-size: 14px;
@@ -95,6 +99,8 @@ body {
   border: 1px solid var(--j-border);
   border-radius: 8px;
   outline: none;
+  appearance: none;
+  -webkit-appearance: none;
   user-select: text;
   -webkit-user-select: text;
   transition:
@@ -217,9 +223,14 @@ body {
 
 /* ── M1 翻译 / 历史 / 设置 ── */
 button,
-select,
-input {
+select {
   cursor: default; /* §8.4：可点击元素不动指针 */
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input {
+  cursor: default;
 }
 
 .translate-view,
@@ -254,10 +265,20 @@ input {
   font: inherit;
   font-size: 12.5px;
   color: var(--j-fg);
-  background: var(--j-input-bg);
+  background-color: var(--j-input-bg);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%235c6773' d='M2.6 4.2L6 8l3.4-3.8'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
   border: 1px solid var(--j-border);
   border-radius: 8px;
   outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .native-select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%238a94a0' d='M2.6 4.2L6 8l3.4-3.8'/></svg>");
+  }
 }
 
 .native-select:focus-visible {
@@ -281,6 +302,8 @@ input {
   background: var(--j-input-bg);
   border: 1px solid var(--j-border);
   border-radius: 8px;
+  appearance: none;
+  -webkit-appearance: none;
   transition:
     background-color 120ms ease,
     transform 120ms ease;

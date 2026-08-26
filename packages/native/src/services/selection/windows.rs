@@ -3,8 +3,12 @@
 use std::mem::size_of;
 use std::time::Duration;
 
+use tauri::AppHandle;
+use tauri_specta::Event;
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
-use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
+use windows::Win32::System::Com::{
+    CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, OpenClipboard,
     SetClipboardData,
@@ -18,20 +22,28 @@ use windows::Win32::UI::Accessibility::{
     UIA_TextPatternId, UIA_ValuePatternId,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, SendInput,
-    VIRTUAL_KEY, VK_CONTROL, VK_C,
+    GetAsyncKeyState, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+    SendInput, VIRTUAL_KEY, VK_CONTROL, VK_C, VK_LWIN, VK_MENU, VK_RWIN,
 };
 
-use super::{SelectedText, SelectionMethod};
+use super::{CaptureChangedEvent, SelectedText, SelectionMethod};
 
-pub fn read() -> SelectedText {
+pub fn read_preferred() -> SelectedText {
     if let Some(text) = uia_selected() {
         if !text.trim().is_empty() {
             return SelectedText {
                 text,
-                method: SelectionMethod::Ax,
+                method: SelectionMethod::Uia,
             };
         }
+    }
+    SelectedText::empty()
+}
+
+pub fn read() -> SelectedText {
+    let preferred = read_preferred();
+    if !preferred.is_blank() {
+        return preferred;
     }
     if let Some(text) = clipboard_fallback() {
         return SelectedText {
@@ -39,14 +51,44 @@ pub fn read() -> SelectedText {
             method: SelectionMethod::Clipboard,
         };
     }
-    SelectedText {
-        text: String::new(),
-        method: SelectionMethod::Manual,
-    }
+    SelectedText::empty()
+}
+
+pub fn begin_clipboard_fallback(app: AppHandle) {
+    std::thread::spawn(move || {
+        wait_for_hotkey_modifiers_up();
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let posted = app.clone();
+        let _ = posted.run_on_main_thread(move || {
+            let snap = unsafe { snapshot_clipboard() };
+            if snap.is_some() {
+                send_ctrl_c();
+            }
+            let _ = tx.send(snap);
+        });
+        let Ok(Some(snap)) = rx.recv_timeout(Duration::from_millis(800)) else {
+            return;
+        };
+        std::thread::sleep(Duration::from_millis(120));
+        let emit_app = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let text = unsafe { read_selected_from_clipboard() }.unwrap_or_default();
+            unsafe { restore_clipboard(snap) };
+            if text.trim().is_empty() {
+                return;
+            }
+            let _ = CaptureChangedEvent(SelectedText {
+                text,
+                method: SelectionMethod::Clipboard,
+            })
+            .emit(&emit_app);
+        });
+    });
 }
 
 fn uia_selected() -> Option<String> {
     unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
         let focused = automation.GetFocusedElement().ok()?;
@@ -84,6 +126,7 @@ fn uia_selected() -> Option<String> {
 }
 
 fn clipboard_fallback() -> Option<String> {
+    wait_for_hotkey_modifiers_up();
     let snapshot = unsafe { snapshot_clipboard() }?;
     send_ctrl_c();
     std::thread::sleep(Duration::from_millis(120));
@@ -183,6 +226,20 @@ unsafe fn restore_clipboard(snapshot: ClipboardSnapshot) {
         }
     }
     let _ = CloseClipboard();
+}
+
+fn wait_for_hotkey_modifiers_up() {
+    for _ in 0..30 {
+        unsafe {
+            let alt_down = GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000 != 0;
+            let lwin_down = GetAsyncKeyState(VK_LWIN.0 as i32) as u16 & 0x8000 != 0;
+            let rwin_down = GetAsyncKeyState(VK_RWIN.0 as i32) as u16 & 0x8000 != 0;
+            if !alt_down && !lwin_down && !rwin_down {
+                return;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn send_ctrl_c() {

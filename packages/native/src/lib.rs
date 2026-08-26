@@ -43,7 +43,11 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(specta.invoke_handler())
-        .setup(|app| {
+        .setup(move |app| {
+            // specta 事件（hotkey://pressed / capture://changed / engine://error）必须先挂上，
+            // 否则 Event::emit 会 panic：EventRegistry not found。
+            specta.mount_events(app);
+
             #[cfg(target_os = "macos")]
             services::panel::macos::apply_activation_policy(app.handle());
 

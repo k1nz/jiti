@@ -6,6 +6,7 @@
 //! - 显示不抢焦点（macOS orderFrontRegardless + Accessory 策略），不打断前台 App 输入。
 
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri_specta::Event;
 
 /// 开发期遥测（§13 感知目标：热键→弹窗暖启 <30ms）：
 /// show_panel_inner 记录发起时刻，macos::reveal 翻转 alpha 时打印耗时。
@@ -47,6 +48,11 @@ impl Mode {
         }
     }
 
+    /// 只有直达翻译/语法才读选中；托盘「显示面板」不模拟 Cmd+C。
+    pub fn captures_selection(self) -> bool {
+        matches!(self, Mode::Translate | Mode::Grammar)
+    }
+
     pub fn from_opt(s: Option<&str>) -> Self {
         match s {
             Some("translate") => Mode::Translate,
@@ -71,14 +77,30 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
     #[cfg(debug_assertions)]
     eprintln!("[jiti] show_panel mode={} follow_cursor={}", mode.as_str(), follow_cursor);
     let _ = app.run_on_main_thread(move || {
+        // 显示前在主线程读选中（§3.4）。reveal 之后 AX 焦点可能已经不在原 App。
+        // 托盘「显示面板」不走捕获：剪贴板回写过期 NSPasteboardItem 会抛 ObjC 异常并 abort。
+        let capture = mode.captures_selection();
+        let selection = if capture {
+            crate::services::selection::read_preferred()
+        } else {
+            crate::services::selection::SelectedText::empty()
+        };
+        let need_clipboard = capture && selection.is_blank();
         if let Some(win) = inner.get_webview_window("main") {
             if follow_cursor {
                 position_near_cursor(&win);
             }
             reveal(&win);
         }
-        let _ = inner.emit("hotkey://pressed", mode.as_str());
+        let _ = crate::services::selection::HotkeyPressedEvent {
+            mode: mode.as_str().to_string(),
+            selection,
+        }
+        .emit(&inner);
         let _ = inner.emit("panel://visibility", "shown");
+        if need_clipboard {
+            crate::services::selection::begin_clipboard_fallback(inner.clone());
+        }
     });
 }
 
@@ -385,5 +407,12 @@ mod tests {
         assert_eq!(Mode::Translate.as_str(), "translate");
         assert_eq!(Mode::Grammar.as_str(), "grammar");
         assert_eq!(Mode::Panel.as_str(), "panel");
+    }
+
+    #[test]
+    fn tray_panel_does_not_capture_selection() {
+        assert!(Mode::Translate.captures_selection());
+        assert!(Mode::Grammar.captures_selection());
+        assert!(!Mode::Panel.captures_selection());
     }
 }

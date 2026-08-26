@@ -23,7 +23,9 @@ export const commands = {
 
 /** Events */
 export const events = {
+	captureChanged: makeEvent<CaptureChangedEvent>("capture://changed"),
 	engineError: makeEvent<EngineErrorEvent>("engine://error"),
+	hotkeyPressed: makeEvent<HotkeyPressedEvent>("hotkey://pressed"),
 };
 
 /* Types */
@@ -32,6 +34,9 @@ export type AccessibilityStatus = {
 	platform: string,
 	hint: string | null,
 };
+
+/**  剪贴板兜底稍后完成时补发（AX/UIA 为空才走）。 */
+export type CaptureChangedEvent = SelectedText;
 
 /**  specta 单源事件契约；Tauri 侧实际事件名保持 `engine://error`（§3.5）。 */
 export type EngineErrorEvent = EngineErrorPayload;
@@ -57,6 +62,12 @@ export type HistoryEntry = {
 	durationMs: number,
 	sourceApp: string | null,
 	meta: string | null,
+};
+
+/**  热键载荷：模式 + 显示前读到的选中文本（§3.4）。 */
+export type HotkeyPressedEvent = {
+	mode: string,
+	selection: SelectedText,
 };
 
 /**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keyring 里）。 */
@@ -132,7 +143,7 @@ export type SelectedText = {
 	method: SelectionMethod,
 };
 
-export type SelectionMethod = "ax" | "clipboard" | "manual";
+export type SelectionMethod = "ax" | "uia" | "clipboard" | "manual";
 
 /**
  *  settings.json 里的值：JSON 语义的封闭子集（形状与 `serde_json::Value` 同构）。

@@ -23,6 +23,7 @@ import type {
   TestProviderResult,
   TranslateRequest_Deserialize,
   TranslateResult,
+  SelectedText,
 } from '../ipc/bindings';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 
@@ -60,6 +61,7 @@ const copyLabel = ref('');
 let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
 let unlistenEngineError: UnlistenFn | undefined;
+let unlistenCapture: UnlistenFn | undefined;
 
 function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
   return promise.then((result) => {
@@ -105,14 +107,14 @@ async function runTranslate(text = store.input) {
   }
 }
 
-async function captureTranslate() {
-  translateStatus.value = 'idle';
-  const selected = await commands.getSelectedText();
+async function applyCapturedText(selected: SelectedText, onlyIfEmpty = false) {
+  if (onlyIfEmpty && store.input.trim()) return;
   store.input = selected.text;
-  if (selected.text.trim()) {
-    target.value = guessTarget(selected.text);
-    await runTranslate(selected.text);
-  }
+  // AX 为空时，Rust 随后才会执行 Cmd+C 兜底。此时绝不能抢走前台应用的焦点，
+  // 否则模拟复制会复制 Jiti 的空输入框，而不是用户刚才选中的文本。
+  if (!selected.text.trim()) return;
+  target.value = guessTarget(selected.text);
+  void runTranslate(selected.text);
   searchEl.value?.focus();
 }
 
@@ -309,10 +311,17 @@ function onInputFocus(e: FocusEvent) {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  unlistenHotkey = await listen<string>('hotkey://pressed', (event) => {
-    const kind = event.payload as HotkeyKind;
+  unlistenHotkey = await events.hotkeyPressed.listen((event) => {
+    const kind = event.payload.mode as HotkeyKind;
     store.onHotkey(kind);
-    if (kind === 'translate') void captureTranslate();
+    if (store.activeMode === 'translate') {
+      translateStatus.value = 'idle';
+      void applyCapturedText(event.payload.selection);
+    }
+  });
+  unlistenCapture = await events.captureChanged.listen((event) => {
+    if (store.activeMode !== 'translate') return;
+    void applyCapturedText(event.payload, true);
   });
   unlistenVisibility = await listen<string>('panel://visibility', (event) => {
     store.onVisibility(event.payload === 'shown');
@@ -329,6 +338,7 @@ onBeforeUnmount(() => {
   unlistenHotkey?.();
   unlistenVisibility?.();
   unlistenEngineError?.();
+  unlistenCapture?.();
 });
 
 watch(
@@ -342,7 +352,7 @@ watch(
 
 <template>
   <div class="shell" @click="onShellClick">
-    <header class="chrome">
+        <header class="chrome search-wrap">
       <input
         ref="searchEl"
         v-model="store.input"
