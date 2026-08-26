@@ -6,6 +6,7 @@ pub mod history;
 pub mod hotkeys;
 pub mod keyring;
 pub mod panel;
+pub mod permissions;
 pub mod selection;
 pub mod settings;
 pub mod transport;

@@ -405,13 +405,15 @@ CREATE INDEX idx_history_created ON history(created_at);
 
 | 能力 | macOS | Windows |
 |---|---|---|
-| 全局热键 | Carbon `RegisterEventHotKey`（Tauri global-shortcut 底层）；个别新系统可能要求辅助功能/输入监控 | `RegisterHotKey`（Win32） |
-| 读取选中文本 | 辅助功能权限（AX） | UI Automation |
-| 剪贴板兜底 | 无需 | 无需 |
+| 全局热键 | Carbon `RegisterEventHotKey`（Tauri global-shortcut 底层）；不监听按键，**不索要输入监控** | `RegisterHotKey`（Win32） |
+| 读取选中文本 | 辅助功能权限（AX） | UI Automation（无用户授权闸门） |
+| 剪贴板兜底 | 同辅助功能（CGEvent 模拟 Cmd+C） | 无需 |
 | 开机自启 | SMAppService（App 需在 Applications） | 注册表 Run 键 |
 | 密钥 | Keychain（未签名构建会弹授权） | Credential Manager |
 
-> macOS 辅助功能授权后常需重启应用生效，设置页提示。
+**首次引导：** 冷启后 WebView 就绪即查 `permissions_snapshot`。macOS 且辅助功能未开、且用户未跳过 → 自动显示面板，内容换成全屏引导页（不是 DOM 遮罩对话框）。「去开启」调用 `AXIsProcessTrustedWithOptions(prompt)` 并跳到系统设置辅助功能页；引导页可见期间轮询状态。可「稍后再说」（仍可手动输入翻译）；跳过后不再自动弹出全屏引导，设置页状态卡 + 底栏告警继续提醒。Windows 无必需权限，跳过引导。
+
+> macOS 辅助功能授权后偶需重启才真正生效，引导页提供「重启应用」。
 
 ### 7.3 快捷键配置
 - 默认两套（均可改）：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板（上次模式）；Windows `Ctrl+Alt+T/G/Space`。

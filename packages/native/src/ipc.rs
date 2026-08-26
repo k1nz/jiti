@@ -23,6 +23,11 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
         crate::commands::history::history_clear,
         crate::commands::accessibility::accessibility_status,
         crate::commands::accessibility::open_accessibility_settings,
+        crate::commands::permissions::permissions_snapshot,
+        crate::commands::permissions::request_permission,
+        crate::commands::permissions::open_permission_settings,
+        crate::commands::permissions::complete_onboarding,
+        crate::commands::permissions::restart_app,
     ])
     .events(collect_events![
         crate::providers::error::EngineErrorEvent,

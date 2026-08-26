@@ -19,6 +19,11 @@ export const commands = {
 	historyClear: () => typedError<number, string>(__TAURI_INVOKE("history_clear")),
 	accessibilityStatus: () => __TAURI_INVOKE<AccessibilityStatus>("accessibility_status"),
 	openAccessibilitySettings: () => typedError<boolean, string>(__TAURI_INVOKE("open_accessibility_settings")),
+	permissionsSnapshot: () => __TAURI_INVOKE<PermissionsSnapshot>("permissions_snapshot"),
+	requestPermission: (id: string) => typedError<boolean, string>(__TAURI_INVOKE("request_permission", { id })),
+	openPermissionSettings: (id: string) => typedError<boolean, string>(__TAURI_INVOKE("open_permission_settings", { id })),
+	completeOnboarding: () => typedError<PermissionsSnapshot, string>(__TAURI_INVOKE("complete_onboarding")),
+	restartApp: () => __TAURI_INVOKE<void>("restart_app"),
 };
 
 /** Events */
@@ -29,6 +34,7 @@ export const events = {
 };
 
 /* Types */
+/**  旧设置页状态卡形状，由 permissions snapshot 投影而来。 */
 export type AccessibilityStatus = {
 	trusted: boolean,
 	platform: string,
@@ -68,6 +74,23 @@ export type HistoryEntry = {
 export type HotkeyPressedEvent = {
 	mode: string,
 	selection: SelectedText,
+};
+
+export type PermissionItem = {
+	id: string,
+	title: string,
+	description: string,
+	granted: boolean,
+	required: boolean,
+	hint: string | null,
+};
+
+export type PermissionsSnapshot = {
+	platform: string,
+	items: PermissionItem[],
+	allRequiredGranted: boolean,
+	onboardingSeen: boolean,
+	needsOnboarding: boolean,
 };
 
 /**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keyring 里）。 */

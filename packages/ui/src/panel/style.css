@@ -20,6 +20,9 @@
   --j-tab-on: rgba(232, 145, 15, 0.14);
   --j-focus-ring: rgba(232, 145, 15, 0.55);
   --j-dot: #0f9d6a;
+  --j-surface: rgba(255, 255, 255, 0.72);
+  --j-warning: #b46b12;
+  --j-danger: #c84949;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -38,6 +41,9 @@
     --j-tab-on: rgba(242, 174, 75, 0.17);
     --j-focus-ring: rgba(242, 174, 75, 0.6);
     --j-dot: #3ecf8e;
+    --j-surface: rgba(255, 255, 255, 0.06);
+    --j-warning: #efad55;
+    --j-danger: #f07676;
   }
 }
 
@@ -1014,6 +1020,150 @@ body {
 .dot {
   width: 5px;
   height: 5px;
+}
+
+.status-warn {
+  -webkit-app-region: no-drag;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--j-warning);
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+.status-warn:hover {
+  color: var(--j-fg);
+}
+
+.settings-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ── 首次权限引导：占满面板，不是遮罩对话框（§7.2 / 附录 A） ── */
+.onboarding {
+  -webkit-app-region: drag;
+}
+
+.onboarding-head {
+  padding: 22px 20px 8px;
+}
+
+.onboarding-kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--j-muted);
+}
+
+.onboarding h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.onboarding-lead {
+  margin: 8px 0 0;
+  color: var(--j-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.onboarding-body {
+  flex: 1;
+  padding: 12px 20px 8px;
+  overflow: auto;
+}
+
+.perm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 10px;
+  background: var(--j-surface);
+  border: 1px solid var(--j-border);
+  border-radius: 8px;
+}
+
+.perm-row.granted {
+  border-color: color-mix(in srgb, var(--j-dot) 35%, transparent);
+}
+
+.perm-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--j-warning);
+  background: color-mix(in srgb, var(--j-warning) 12%, transparent);
+  border-radius: 7px;
+}
+
+.perm-row.granted .perm-icon {
+  color: var(--j-dot);
+  background: color-mix(in srgb, var(--j-dot) 14%, transparent);
+}
+
+.perm-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.perm-copy p {
+  margin: 4px 0 0;
+  color: var(--j-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.perm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.perm-badge {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--j-warning);
+  background: color-mix(in srgb, var(--j-warning) 12%, transparent);
+  border-radius: 4px;
+}
+
+.perm-badge.on {
+  color: var(--j-dot);
+  background: color-mix(in srgb, var(--j-dot) 14%, transparent);
+}
+
+.onboarding-steps {
+  margin: 14px 0 0;
+  padding: 0 0 0 18px;
+  color: var(--j-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.onboarding-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--j-border);
+  background: var(--j-surface);
+}
+
+.onboarding-foot .action.subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .status-warn {

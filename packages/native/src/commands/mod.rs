@@ -3,6 +3,7 @@
 pub mod accessibility;
 pub mod history;
 pub mod panel;
+pub mod permissions;
 pub mod providers;
 pub mod selection;
 pub mod settings;

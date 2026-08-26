@@ -13,9 +13,10 @@ import {
 } from '@tabler/icons-vue';
 import { commands, events } from '../ipc/bindings';
 import type {
-  AccessibilityStatus,
   EngineErrorPayload,
   HistoryEntry,
+  PermissionItem,
+  PermissionsSnapshot,
   ProviderConfig_Serialize,
   ProviderView,
   ProvidersConfig_Serialize,
@@ -25,7 +26,9 @@ import type {
   TranslateResult,
   SelectedText,
 } from '../ipc/bindings';
+import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
+import Onboarding from './Onboarding.vue';
 
 const store = usePanelStore();
 const searchEl = ref<HTMLInputElement | null>(null);
@@ -52,7 +55,8 @@ const translateResult = ref<TranslateResult | null>(null);
 const translateError = ref<EngineErrorPayload | null>(null);
 const history = ref<HistoryEntry[]>([]);
 const settings = ref<ProvidersSnapshot | null>(null);
-const accessStatus = ref<AccessibilityStatus | null>(null);
+const permissions = ref<PermissionsSnapshot | null>(null);
+const showOnboarding = ref(false);
 const keyInputs = ref<Record<string, string>>({});
 const testResults = ref<Record<string, TestProviderResult | null>>({});
 const testing = ref<Record<string, boolean>>({});
@@ -62,6 +66,7 @@ let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
 let unlistenEngineError: UnlistenFn | undefined;
 let unlistenCapture: UnlistenFn | undefined;
+let permissionPoll: number | undefined;
 
 function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
   return promise.then((result) => {
@@ -208,10 +213,54 @@ async function saveSettings() {
 async function loadSettings() {
   try {
     settings.value = await unwrap(commands.providersSnapshot());
-    accessStatus.value = await commands.accessibilityStatus();
+    await refreshPermissions();
   } catch (err) {
     PLACEHOLDERS.settings.line = `设置加载失败：${String(err)}`;
   }
+}
+
+async function refreshPermissions() {
+  try {
+    const snapshot = await commands.permissionsSnapshot();
+    permissions.value = snapshot;
+    if (snapshot.needsOnboarding) showOnboarding.value = true;
+  } catch {
+    // 权限查询失败时不打断主流程；设置卡会保持上次状态。
+  }
+}
+
+function startPermissionPoll() {
+  if (permissionPoll !== undefined) return;
+  permissionPoll = window.setInterval(() => {
+    void refreshPermissions();
+  }, 1200);
+}
+
+function stopPermissionPoll() {
+  if (permissionPoll === undefined) return;
+  window.clearInterval(permissionPoll);
+  permissionPoll = undefined;
+}
+
+async function enablePermission(id: string) {
+  await unwrap(commands.requestPermission(id));
+  await refreshPermissions();
+  startPermissionPoll();
+}
+
+async function finishOnboarding() {
+  permissions.value = await unwrap(commands.completeOnboarding());
+  showOnboarding.value = false;
+  stopPermissionPoll();
+  if (store.visible && footerPermissionWarning(permissions.value)) startPermissionPoll();
+}
+
+async function restartApp() {
+  await commands.restartApp();
+}
+
+function accessibilityItem(): PermissionItem | null {
+  return permissions.value?.items.find((item) => item.id === 'accessibility') ?? null;
 }
 
 function onToggleProvider(id: string, event: Event) {
@@ -261,7 +310,8 @@ async function testProvider(id: string) {
 }
 
 async function openAccessibility() {
-  await unwrap(commands.openAccessibilitySettings());
+  await unwrap(commands.openPermissionSettings('accessibility'));
+  startPermissionPoll();
 }
 
 function formatTime(value: string) {
@@ -278,6 +328,9 @@ const statusText = computed(() => {
   return `${active.label} · ${active.hasKey ? 'Key 已配置' : 'Key 未配置'}`;
 });
 
+const permissionWarning = computed(() => footerPermissionWarning(permissions.value));
+const accessItem = computed(() => accessibilityItem());
+
 const placeholder = computed(() => {
   if (store.activeMode === 'translate') return '输入文本，或选中一段文字后按 ⌥⌘T';
   if (store.activeMode === 'grammar') return '语法检查 · M2';
@@ -290,6 +343,7 @@ async function onKeydown(e: KeyboardEvent) {
     await commands.hidePopup();
     return;
   }
+  if (showOnboarding.value) return;
   if (e.key === 'Tab') {
     e.preventDefault();
     store.cycleMode(e.shiftKey ? -1 : 1);
@@ -331,6 +385,11 @@ onMounted(async () => {
     if (store.activeMode === 'translate') translateStatus.value = 'error';
   });
   await loadSettings();
+  if (permissions.value?.needsOnboarding) {
+    showOnboarding.value = true;
+    startPermissionPoll();
+    await unwrap(commands.showPopup(null));
+  }
 });
 
 onBeforeUnmount(() => {
@@ -339,6 +398,7 @@ onBeforeUnmount(() => {
   unlistenVisibility?.();
   unlistenEngineError?.();
   unlistenCapture?.();
+  stopPermissionPoll();
 });
 
 watch(
@@ -348,10 +408,28 @@ watch(
     if (mode === 'settings') void loadSettings();
   },
 );
+
+watch(
+  () => store.visible,
+  (visible) => {
+    if (visible) void refreshPermissions();
+    if (visible && (showOnboarding.value || permissionWarning.value)) startPermissionPoll();
+    if (!visible && !showOnboarding.value) stopPermissionPoll();
+  },
+);
 </script>
 
 <template>
-  <div class="shell" @click="onShellClick">
+  <Onboarding
+    v-if="showOnboarding && permissions"
+    :snapshot="permissions"
+    @enable="enablePermission"
+    @skip="finishOnboarding"
+    @start="finishOnboarding"
+    @restart="restartApp"
+    @recheck="refreshPermissions"
+  />
+  <div v-else class="shell" @click="onShellClick">
         <header class="chrome search-wrap">
       <input
         ref="searchEl"
@@ -470,13 +548,17 @@ watch(
 
       <section v-else-if="store.activeMode === 'settings'" class="settings-view">
         <div
-          v-if="accessStatus && accessStatus.platform === 'macos' && !accessStatus.trusted"
+          v-if="accessItem && !accessItem.granted"
           class="permission-card"
         >
           <span>辅助功能权限未开启</span>
-          <p class="muted">{{ accessStatus.hint }}</p>
+          <p class="muted">{{ accessItem.hint }}</p>
           <button class="action" type="button" @click="openAccessibility">打开系统设置</button>
         </div>
+
+        <p v-else-if="permissions?.platform === 'windows'" class="muted settings-note">
+          Windows 通过 UI Automation 读取选中文本，无需额外系统授权。
+        </p>
 
         <div class="pane-header">
           <span>引擎与 Key</span>
@@ -582,6 +664,14 @@ watch(
         <span class="dot" aria-hidden="true"></span>
         {{ statusText }}
       </span>
+      <button
+        v-if="permissionWarning"
+        class="status-warn"
+        type="button"
+        @click="store.setActiveMode('settings')"
+      >
+        {{ permissionWarning }}
+      </button>
       <span class="spacer"></span>
       <span class="status-item mono">Esc 隐藏 · Tab 切模式</span>
     </footer>

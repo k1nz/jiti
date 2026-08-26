@@ -1,9 +1,9 @@
-//! 辅助功能权限命令（§7.2：macOS 权限状态卡 + 一键跳系统设置）。
+//! 辅助功能权限命令（兼容入口；完整矩阵见 `permissions`）。
 
-use serde::{Deserialize, Serialize};
-use specta::Type;
+use crate::services::permissions::{self, PermissionsSnapshot};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+/// 旧设置页状态卡形状，由 permissions snapshot 投影而来。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AccessibilityStatus {
     pub trusted: bool,
@@ -11,44 +11,29 @@ pub struct AccessibilityStatus {
     pub hint: Option<String>,
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn accessibility_status() -> AccessibilityStatus {
-    #[cfg(target_os = "macos")]
-    {
-        let trusted = unsafe { objc2_application_services::AXIsProcessTrusted() };
-        return AccessibilityStatus {
-            trusted,
-            platform: "macos".into(),
-            hint: if trusted {
-                None
-            } else {
-                Some(
-                    "Jiti 需要辅助功能权限才能直接读取选中文本；授权后通常需重启应用生效。"
-                        .into(),
-                )
-            },
-        };
-    }
-    #[cfg(not(target_os = "macos"))]
-    AccessibilityStatus {
-        trusted: true,
-        platform: "windows".into(),
-        hint: None,
+impl From<&PermissionsSnapshot> for AccessibilityStatus {
+    fn from(snap: &PermissionsSnapshot) -> Self {
+        let item = snap
+            .items
+            .iter()
+            .find(|item| item.id == permissions::ACCESSIBILITY_ID);
+        Self {
+            trusted: item.map(|item| item.granted).unwrap_or(true),
+            platform: snap.platform.clone(),
+            hint: item.and_then(|item| item.hint.clone()),
+        }
     }
 }
 
 #[tauri::command]
 #[specta::specta]
+pub fn accessibility_status() -> AccessibilityStatus {
+    let items = permissions::items(permissions::accessibility_trusted());
+    AccessibilityStatus::from(&permissions::snapshot_from(items, true))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn open_accessibility_settings() -> Result<bool, String> {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-            .spawn()
-            .map(|_| true)
-            .map_err(|e| e.to_string())
-    }
-    #[cfg(not(target_os = "macos"))]
-    Ok(false)
+    permissions::open_accessibility_settings()
 }
