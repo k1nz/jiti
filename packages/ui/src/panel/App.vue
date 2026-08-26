@@ -23,11 +23,13 @@ import type {
   ProvidersSnapshot,
   TestProviderResult,
   TranslateRequest_Deserialize,
+  HotkeysSnapshot,
   TranslateResult,
   SelectedText,
 } from '../ipc/bindings';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
+import Hotkeys from './Hotkeys.vue';
 import Onboarding from './Onboarding.vue';
 
 const store = usePanelStore();
@@ -42,7 +44,7 @@ const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = 
 ];
 
 const PLACEHOLDERS: Record<PanelMode, { icon: Component; line: string }> = {
-  translate: { icon: IconLanguage, line: '输入文本，或选中一段文字后按 ⌥⌘T' },
+  translate: { icon: IconLanguage, line: '输入文本，或选中一段文字后按快捷键' },
   grammar: { icon: IconAbc, line: '语法检查 · M2 接入' },
   mistakes: { icon: IconNotebook, line: '还没有错题，检查一次就有了' },
   history: { icon: IconHistory, line: '暂无历史' },
@@ -55,6 +57,7 @@ const translateResult = ref<TranslateResult | null>(null);
 const translateError = ref<EngineErrorPayload | null>(null);
 const history = ref<HistoryEntry[]>([]);
 const settings = ref<ProvidersSnapshot | null>(null);
+const hotkeys = ref<HotkeysSnapshot | null>(null);
 const permissions = ref<PermissionsSnapshot | null>(null);
 const showOnboarding = ref(false);
 const keyInputs = ref<Record<string, string>>({});
@@ -213,10 +216,19 @@ async function saveSettings() {
 async function loadSettings() {
   try {
     settings.value = await unwrap(commands.providersSnapshot());
-    await refreshPermissions();
   } catch (err) {
     PLACEHOLDERS.settings.line = `设置加载失败：${String(err)}`;
   }
+  try {
+    hotkeys.value = await commands.hotkeysSnapshot();
+  } catch {
+    // 热键快照失败时占位符走平台默认。
+  }
+  await refreshPermissions();
+}
+
+function onHotkeysUpdated(snapshot: HotkeysSnapshot) {
+  hotkeys.value = snapshot;
 }
 
 async function refreshPermissions() {
@@ -331,8 +343,16 @@ const statusText = computed(() => {
 const permissionWarning = computed(() => footerPermissionWarning(permissions.value));
 const accessItem = computed(() => accessibilityItem());
 
+const translateShortcut = computed(() => {
+  const bind = hotkeys.value?.bindings.find((item) => item.id === 'translate');
+  if (bind?.display) return bind.display;
+  return permissions.value?.platform === 'windows' ? 'Ctrl+Shift+T' : '⌥⌘T';
+});
+
+const translateHint = computed(() => `输入文本，或选中一段文字后按 ${translateShortcut.value}`);
+
 const placeholder = computed(() => {
-  if (store.activeMode === 'translate') return '输入文本，或选中一段文字后按 ⌥⌘T';
+  if (store.activeMode === 'translate') return translateHint.value;
   if (store.activeMode === 'grammar') return '语法检查 · M2';
   return TABS.find((tab) => tab.key === store.activeMode)?.label ?? '输入';
 });
@@ -512,7 +532,7 @@ watch(
         </div>
         <div v-else class="state-box">
           <IconLanguage :size="26" :stroke-width="1.5" />
-          <span>输入文本，或选中一段文字后按 ⌥⌘T</span>
+          <span>{{ translateHint }}</span>
         </div>
       </section>
 
@@ -559,6 +579,12 @@ watch(
         <p v-else-if="permissions?.platform === 'windows'" class="muted settings-note">
           Windows 通过 UI Automation 读取选中文本，无需额外系统授权。
         </p>
+
+        <Hotkeys
+          v-if="hotkeys"
+          :snapshot="hotkeys"
+          @updated="onHotkeysUpdated"
+        />
 
         <div class="pane-header">
           <span>引擎与 Key</span>

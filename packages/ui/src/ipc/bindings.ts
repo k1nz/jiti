@@ -17,6 +17,11 @@ export const commands = {
 	providerTest: (provider: string) => typedError<TestProviderResult, string>(__TAURI_INVOKE("provider_test", { provider })),
 	historyList: () => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_list")),
 	historyClear: () => typedError<number, string>(__TAURI_INVOKE("history_clear")),
+	hotkeysSnapshot: () => __TAURI_INVOKE<HotkeysSnapshot>("hotkeys_snapshot"),
+	hotkeysSet: (id: HotkeyId, accelerator: string) => typedError<HotkeysSnapshot, string>(__TAURI_INVOKE("hotkeys_set", { id, accelerator })),
+	hotkeysReset: () => typedError<HotkeysSnapshot, string>(__TAURI_INVOKE("hotkeys_reset")),
+	hotkeysSuspend: () => __TAURI_INVOKE<void>("hotkeys_suspend"),
+	hotkeysResume: () => __TAURI_INVOKE<void>("hotkeys_resume"),
 	accessibilityStatus: () => __TAURI_INVOKE<AccessibilityStatus>("accessibility_status"),
 	openAccessibilitySettings: () => typedError<boolean, string>(__TAURI_INVOKE("open_accessibility_settings")),
 	permissionsSnapshot: () => __TAURI_INVOKE<PermissionsSnapshot>("permissions_snapshot"),
@@ -70,10 +75,26 @@ export type HistoryEntry = {
 	meta: string | null,
 };
 
+export type HotkeyBinding = {
+	id: HotkeyId,
+	title: string,
+	accelerator: string,
+	display: string,
+	isDefault: boolean,
+	registered: boolean,
+};
+
+export type HotkeyId = "translate" | "grammar" | "panel";
+
 /**  热键载荷：模式 + 显示前读到的选中文本（§3.4）。 */
 export type HotkeyPressedEvent = {
 	mode: string,
 	selection: SelectedText,
+};
+
+export type HotkeysSnapshot = {
+	platform: string,
+	bindings: HotkeyBinding[],
 };
 
 export type PermissionItem = {

@@ -416,8 +416,8 @@ CREATE INDEX idx_history_created ON history(created_at);
 > macOS 辅助功能授权后偶需重启才真正生效，引导页提供「重启应用」。
 
 ### 7.3 快捷键配置
-- 默认两套（均可改）：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板（上次模式）；Windows `Ctrl+Alt+T/G/Space`。
-- 变更即 Unregister+Register（tauri-plugin-global-shortcut 自带），冲突弹提示。
+- 默认两套（均可改）：macOS `⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板（上次模式）；Windows `Ctrl+Shift+T` 翻译 / `Ctrl+Alt+G` 语法 / `Ctrl+Alt+Space` 统一面板。
+- 设置页点击组合键后按下新快捷键即可重配；变更即 Unregister+Register（tauri-plugin-global-shortcut），与本应用其它热键冲突或系统占用时弹提示。
 - 面板内 `Tab` 切模式、`Esc` 收起、`⌘Enter` 手动触发、`⌘C` 复制结果。**`Esc` 永远有明确含义**（原生约定）。
 
 ---
@@ -642,7 +642,7 @@ jiti/
 | **M1 翻译** | translate 命令（DeepL + 有道 + LLM）、选中捕获链（AX/UIA + 剪贴板兜底）、翻译 Tab、历史入库 | 选中即译可用 |
 | **M2 语法** | LLM 语法提示词 + 流式 + 结构化解析、错误卡片、Languagetool 可选适配器 | 语法检查可用 |
 | **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结 | 错题本能用 |
-| **M4 设置完善** | 快捷键重配、自启、Provider 管理+测试、权限引导、i18n、主题、IME 专项 QA | 可交付内测 |
+| **M4 设置完善** | 自启、i18n、主题、IME 专项 QA（快捷键重配已在设置页落地） | 可交付内测 |
 | **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、签名公证双端打包 | 可对外分发 |
 | **后置** | Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |
 

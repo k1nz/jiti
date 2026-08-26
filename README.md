@@ -33,4 +33,9 @@ JITI_AUTOSHOW_MS=1500 pnpm dev   # 启动 1.5s 后自动唤起面板（与热键
 JITI_CENTER=1 JITI_AUTOSHOW_MS=1500 pnpm dev   # 配合居中（截图对齐）
 ```
 
-默认热键：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板。托盘提供「显示面板 / 退出」。
+默认热键：
+
+- macOS：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板
+- Windows：`Ctrl+Shift+T` 翻译 / `Ctrl+Alt+G` 语法 / `Ctrl+Alt+Space` 统一面板
+
+可在设置里重配。托盘提供「显示面板 / 退出」。

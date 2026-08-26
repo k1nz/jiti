@@ -23,7 +23,7 @@ use windows::Win32::UI::Accessibility::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-    SendInput, VIRTUAL_KEY, VK_CONTROL, VK_C, VK_LWIN, VK_MENU, VK_RWIN,
+    SendInput, VIRTUAL_KEY, VK_CONTROL, VK_C, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 
 use super::{CaptureChangedEvent, SelectedText, SelectionMethod};
@@ -231,10 +231,12 @@ unsafe fn restore_clipboard(snapshot: ClipboardSnapshot) {
 fn wait_for_hotkey_modifiers_up() {
     for _ in 0..30 {
         unsafe {
+            let ctrl_down = GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000 != 0;
+            let shift_down = GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000 != 0;
             let alt_down = GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000 != 0;
             let lwin_down = GetAsyncKeyState(VK_LWIN.0 as i32) as u16 & 0x8000 != 0;
             let rwin_down = GetAsyncKeyState(VK_RWIN.0 as i32) as u16 & 0x8000 != 0;
-            if !alt_down && !lwin_down && !rwin_down {
+            if !ctrl_down && !shift_down && !alt_down && !lwin_down && !rwin_down {
                 return;
             }
         }

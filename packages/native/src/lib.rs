@@ -30,7 +30,7 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        // ⌥⌘T / ⌥⌘G / ⌥⌘Space：只“显示已创建的隐藏窗”，绝不按热键建窗
+                        // 已注册热键：只“显示已创建的隐藏窗”，绝不按热键建窗
                         let mode = services::hotkeys::mode_for(shortcut);
                         services::panel::show_panel(app, mode);
                     }

@@ -2,6 +2,7 @@
 
 pub mod accessibility;
 pub mod history;
+pub mod hotkeys;
 pub mod panel;
 pub mod permissions;
 pub mod providers;

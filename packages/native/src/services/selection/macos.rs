@@ -202,12 +202,14 @@ fn ax_attr<T: ConcreteType>(
     retained.downcast::<T>().ok()
 }
 
-/// 等用户松开 ⌥⌘T，避免合成键变成 ⌥⌘C。
+/// 等用户松开当前热键的修饰键，避免合成复制变成 ⌥⌘C / ⌃⇧C。
 fn wait_for_hotkey_modifiers_up() {
     for _ in 0..30 {
         let flags = CGEventSource::flags_state(CGEventSourceStateID::HIDSystemState);
         if !flags.contains(CGEventFlags::MaskAlternate)
             && !flags.contains(CGEventFlags::MaskCommand)
+            && !flags.contains(CGEventFlags::MaskShift)
+            && !flags.contains(CGEventFlags::MaskControl)
         {
             return;
         }
