@@ -118,10 +118,10 @@ export type PermissionsSnapshot = {
 	needsOnboarding: boolean,
 };
 
-/**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keyring 里）。 */
+/**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。 */
 export type ProviderConfig = ProviderConfig_Serialize | ProviderConfig_Deserialize;
 
-/**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keyring 里）。 */
+/**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。 */
 export type ProviderConfig_Deserialize = {
 	enabled?: boolean,
 	baseUrl?: string | null,
@@ -132,7 +132,7 @@ export type ProviderConfig_Deserialize = {
 	formality?: string | null,
 };
 
-/**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keyring 里）。 */
+/**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。 */
 export type ProviderConfig_Serialize = {
 	enabled: boolean,
 	baseUrl?: string | null,

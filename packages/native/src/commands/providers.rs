@@ -1,4 +1,4 @@
-//! Provider 设置命令：D2（Key 只进 keyring，WebView 只见状态）。
+//! Provider 设置命令：D2（Key 只进 keys.json，WebView 只见状态）。
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -7,7 +7,7 @@ use tauri::AppHandle;
 use crate::providers::{
     ProvidersConfig, ProvidersSnapshot, config_for, provider_label, snapshot,
 };
-use crate::services::keyring;
+use crate::services::secrets;
 use crate::services::settings;
 use crate::services::transport;
 
@@ -42,9 +42,9 @@ pub fn provider_save_api_key(
     api_key: String,
 ) -> Result<ProvidersSnapshot, String> {
     if api_key.trim().is_empty() {
-        keyring::delete_api_key(&provider);
+        secrets::delete_api_key(&app, &provider);
     } else {
-        keyring::set_api_key(&provider, &api_key)?;
+        secrets::set_api_key(&app, &provider, &api_key)?;
     }
     snapshot(&app)
 }
@@ -60,7 +60,7 @@ pub async fn provider_test(
         Err(e) => return Ok(test_fail(e)),
     };
     let label = provider_label(&provider);
-    let api_key = match keyring::get_api_key(&provider) {
+    let api_key = match secrets::get_api_key(&app, &provider) {
         Ok(key) => key,
         Err(_) => {
             return Ok(test_fail(format!(

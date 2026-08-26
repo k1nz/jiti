@@ -2,7 +2,7 @@
 
 快速翻译 / 语法检查桌面工具（工作代号）。Raycast 风格的系统级浮层：
 全局快捷键唤起、常驻后台、不抢焦点、秒级显示。架构见
-[docs/architecture.md](docs/architecture.md)（v0.2，决策以文档为准）。
+[docs/architecture.md](docs/architecture.md)（v0.2.1，决策以文档为准）。
 
 ## 技术栈
 

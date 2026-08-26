@@ -622,6 +622,7 @@ watch(
           <span>引擎与 Key</span>
           <button class="action subtle" type="button" @click="loadSettings">刷新</button>
         </div>
+        <p class="muted settings-note">API Key 保存在本机 keys.json，不写入钥匙串。</p>
 
         <div v-if="settings" class="setting-row">
           <label class="field-label" for="default-engine">默认引擎</label>

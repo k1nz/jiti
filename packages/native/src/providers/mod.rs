@@ -20,7 +20,7 @@ pub const PROVIDER_DEEPL: &str = "deepl";
 pub const PROVIDER_LLM: &str = "llm";
 pub const PROVIDER_YOUDAO: &str = "youdao";
 
-/// 非密钥的 Provider 配置（settings.json，§6.2：密钥在 keyring 里）。
+/// 非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderConfig {
@@ -161,7 +161,7 @@ pub struct TranslateResult {
     pub duration_ms: u32,
 }
 
-/// 完整链路：设置里选默认引擎 → keyring 取 Key → 对应适配器。
+/// 完整链路：设置里选默认引擎 → keys.json 取 Key → 对应适配器。
 pub async fn run_translate(
     app: &AppHandle,
     request: TranslateRequest,
@@ -173,13 +173,13 @@ pub async fn run_translate(
         })?;
     let id = resolve_provider(&config);
     let provider_config = config_for(&config, id);
-    let key = services::keyring::get_api_key(id).map_err(|_| EngineError::MissingKey {
+    let key = services::secrets::get_api_key(app, id).map_err(|_| EngineError::MissingKey {
         provider: provider_label(id).into(),
     })?;
     translate_with(id, provider_config, key, request).await
 }
 
-/// 适配器级入口：测试连接与 mock 用例直接走这里，不依赖 keyring/AppHandle。
+/// 适配器级入口：测试连接与 mock 用例直接走这里，不依赖 secrets/AppHandle。
 pub async fn translate_with(
     id: &str,
     cfg: &ProviderConfig,
@@ -244,7 +244,7 @@ pub fn provider_label(id: &str) -> &'static str {
 
 pub fn snapshot(app: &AppHandle) -> Result<ProvidersSnapshot, String> {
     let config = services::settings::load_provider_config(app)?;
-    let has_key = |id: &str| services::keyring::has_api_key(id);
+    let has_key = |id: &str| services::secrets::has_api_key(app, id);
     Ok(ProvidersSnapshot {
         default_translate: config.default_translate.clone(),
         write_history: config.write_history,

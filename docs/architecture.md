@@ -1,9 +1,10 @@
 # Jiti · 快速翻译 / 语法检查桌面工具 · 技术架构设计
 
 > 工作代号：**Jiti**（可随时改名）
-> 版本：**v0.2** · 2026-08-25 · 面向 macOS 与 Windows 10/11
+> 版本：**v0.2.1** · 2026-08-26 · 面向 macOS 与 Windows 10/11
 > 目标形态：Raycast 风格的小弹窗，全局快捷键唤起，常驻后台，秒级显示
 > v0.2 变更：依据 `native-feel-cross-platform-desktop` 技能完成架构审计（哲学八原则、WebView 存活清单、IPC 单契约、内存基线修正），依据 `design-taste-frontend` 重写 UI 层设计规范
+> v0.2.1 变更：数据层三分法（`settings.json` / SQLite / `keys.json`）；里程碑补密钥升级路径（签名公证后可走加密库 + Keychain，Key 不进明文历史库）
 
 ---
 
@@ -44,7 +45,7 @@
 | 前端框架 | **Vue 3 + Vite + TypeScript** | 熟悉、轻量；生态与 Tauri 配合顺 |
 | 后端语言 | **Rust** | 热键、窗口、选中读取、密钥托管、统一出网、LLM 流式 |
 | 数据库 | **SQLite**（tauri-plugin-sql） | 错题本 / 历史本地持久化 |
-| 密钥存储 | OS 级 Keychain / DPAPI（keyring crate） | API Key 不进 WebView、不进明文配置 |
+| 密钥存储 | 本地 `keys.json`（tauri-plugin-store） | API Key 不进 WebView；不走 Keychain，避免每次弹系统密码 |
 | IPC 契约 | **tauri-specta**（Rust 单源 → 生成 TS 类型） | 一份 schema，两端类型永远同步（详见 §3.5） |
 | 引擎 | **可插拔 Provider 层** | LLM（OpenAI 兼容）+ DeepL / 有道 / Google / Baidu |
 
@@ -77,7 +78,7 @@ Electron 的体量主要来自捆绑一套 Chromium（安装包 100MB+、内存�
 │                     Rust（Tauri 2 原生层）                      │
 │  commands: translate / grammar_check / mistakes / history /    │
 │            settings / hotkeys / autostart / export              │
-│  services: selection(选中读取)  panel(窗口/焦点/材质)  keyring   │
+│  services: selection(选中读取)  panel(窗口/焦点/材质)  secrets   │
 │            engine_http(统一出网)  store(SQLite/JSON)            │
 │  native-glue: objc2(macOS) / windows crate(Win)                │
 │    · 渲染表面以下的一切：热键、窗口、材质、IME、右键菜单        │
@@ -104,7 +105,7 @@ Electron 的体量主要来自捆绑一套 Chromium（安装包 100MB+、内存�
 WebView 里 `fetch` 受 CORS 约束。所有引擎 HTTP 一律由 Rust `reqwest` 发出（统一超时、重试、错误分类、LLM 流式 SSE）。Vue 只通过 `invoke('translate')` / `invoke('grammar_check')` 等语义命令调用。这同时让未来「本地 → 远程后端」只替换 Rust 这一跳。
 
 **D2 · API Key 与引擎配置永不出现在 WebView。**
-Key 存 OS Keychain（`keyring` crate）。Rust 命令内部拼请求；WebView 只能拿到「哪个 Provider 已配置 / 是否可用 / 测试结果」。
+Key 存应用数据目录的 `keys.json`（tauri-plugin-store，与 `settings.json` 分开）。Rust 命令内部拼请求；WebView 只能拿到「哪个 Provider 已配置 / 是否可用 / 测试结果」。存储后端可在签名后换成加密库 / Keychain，IPC 契约不变。开发期不走 Keychain，避免未签名构建每次弹系统密码。详见 §6.2。
 
 **D3 · 原生壳保持「薄」，但渲染表面以下绝不妥协。**
 UI 与业务核心是可复用资产；窗口、热键、材质、IME、右键菜单这类"渲染表面以下"的系统能力，在 Tauri 里通过 `objc2` / `windows` crate 直接触达 AppKit / Win32，不绕开、不假装能用抽象层搞定（详见 §3.6 哲学 T1）。
@@ -115,7 +116,7 @@ UI 与业务核心是可复用资产；窗口、热键、材质、IME、右键�
 ```
 热键触发 ─▶ Rust: 读选中文本(AX/剪贴板) ─▶ event 'hotkey://pressed{translate}'
 Vue 收到 ─▶ 输入框填入选中文案 ─▶ invoke translate{text,to:'en',engine:default}
-Rust: 取 keyring→DeepL key → reqwest POST → 归一化 → 写 history → 返回
+Rust: 取 keys.json→DeepL key → reqwest POST → 归一化 → 写 history → 返回
 Vue: 渲染译文 + 来源引擎 + 耗时；⌘C 复制 / Esc 隐藏
 ```
 
@@ -276,10 +277,10 @@ tauri_specta::ts::export(
 
 ```
 providers:
-  llm:       { baseUrl, apiKey?(keyring), kind: 'openai'|'claude'|'deepseek'|'custom', model, temperature, maxTokens }
-  deepl:     { apiKey?(keyring), formality }
-  youdao:    { appKey?(keyring), appSecret?(keyring) }
-  google:    { apiKey?(keyring) }
+  llm:       { baseUrl, apiKey?(keys.json), kind: 'openai'|'claude'|'deepseek'|'custom', model, temperature, maxTokens }
+  deepl:     { apiKey?(keys.json), formality }
+  youdao:    { appKey?(keys.json), appSecret?(keys.json) }
+  google:    { apiKey?(keys.json) }
   languagetool: { mode: 'off'|'local'|'online', localPort? }
 defaults:
   translate: deepl  (fallback: llm)
@@ -287,7 +288,7 @@ defaults:
 ```
 
 - 每个 Provider 一个适配器（Rust enum match / trait），实现「构建请求 → reqwest → 解析 → 归一化」。
-- 设置里「测试连接」按钮：读 keyring 后真实打一次 API，只返回 ok/fail + 原因。
+- 设置里「测试连接」按钮：读 keys.json 后真实打一次 API，只返回 ok/fail + 原因。
 - 网络可达性：若在国内，DeepL/Google 直连可能不顺，有道/DeepSeek/国内镜像更可用；设置里标注可达性。
 
 ### 5.2 翻译适配器差异点
@@ -336,13 +337,23 @@ interface GrammarError {
 - AI 复习复用同一 LLM Provider，单独 prompt，只读历史错误聚合高频类型。
 
 ### 5.6 商业化（SaaS）预留边界
-1. **Transport 抽象**：Rust 侧「出网」封装 `Transport` trait，v1 是 `LocalTransport`（reqwest+keyring）；未来加 `RemoteTransport`，UI 零改动。
+1. **Transport 抽象**：Rust 侧「出网」封装 `Transport` trait，v1 是 `LocalTransport`（reqwest + keys.json）；未来加 `RemoteTransport`，UI 零改动。
 2. **Schema 预留**：`mistakes` 表 `server_id / synced_at`；provider 配置预留 `remote_profile`。
 3. **契约文档先行**：`docs/api-contract.md` 同时是未来后端 OpenAPI 初稿。
 
 ---
 
 ## 6. 数据层
+
+按数据类型三分存放，对齐 Raycast 等本地优先桌面应用：**不要**把配置、历史、密钥塞进同一个明文库或同一份 JSON。
+
+| 类型 | 现在（v1 / 开发期） | 目标（M5 签名公证后，可选升级） | 明确不放 |
+|---|---|---|---|
+| 非密钥配置 | `settings.json`（热键、主题、默认引擎、窗口位置） | 不变 | API Key、历史、错题 |
+| 用户内容 | SQLite（`history` / `mistakes`） | 不变 | API Key |
+| 密钥 | `keys.json` 明文（条目少、可手改、不弹密码） | 加密存储；解锁密钥进 OS Keychain | WebView、历史表、settings.json |
+
+条目少（两三个 Provider Key）不值得单独做业务表。SQLite 的价值在查询与体量；把 Key 写成历史库里的明文列，并不比 `keys.json` 更安全。
 
 ### 6.1 SQLite（tauri-plugin-sql，版本化迁移 SQL）
 
@@ -381,7 +392,19 @@ CREATE INDEX idx_history_created ON history(created_at);
 ```
 
 ### 6.2 密钥存储
-一律 `keyring` crate：macOS Keychain、Windows Credential Manager。非密钥配置放 `settings.json`（tauri-plugin-store）。
+
+**现在（已落地）**  
+API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `settings.json` 分开。路径示例：macOS `~/Library/Application Support/com.jiti.app/keys.json`。不走 Keychain / Credential Manager，避免未签名开发构建每次启动或读写都弹系统密码。WebView 只见存在性，拿不到明文。文件明文落盘是为省掉授权打扰的取舍。
+
+**目标（M5 签名公证之后，后置可选）**  
+向 Raycast 看齐，而不是继续把 Key 当普通配置：
+
+1. 应用 **Developer ID 签名 + 公证** 后，本进程读写 Keychain 通常静默通过（Raycast 不弹密码的主因是签名，不是「写进了数据库」）。
+2. 密钥从 `keys.json` **迁移**到加密存储：加密 SQLite / 加密文件，解锁密钥只进 Keychain 一次；或直接用 Keychain 存各 Provider Key。
+3. 迁移一次性、可回退；IPC 仍只返回 `hasKey`，WebView 契约不变。
+4. **禁止**把 API Key 写入 `history` / `mistakes` 表。
+
+未签名阶段维持 `keys.json`，不为「看起来更像数据库」而提前混进明文 SQLite。
 
 ### 6.3 导出
 错题本导出 **Markdown**（按错误类型分组，例句/修改/讲解）。文件位置用系统对话框选；Rust 写盘后返回路径。
@@ -409,7 +432,7 @@ CREATE INDEX idx_history_created ON history(created_at);
 | 读取选中文本 | 辅助功能权限（AX） | UI Automation（无用户授权闸门） |
 | 剪贴板兜底 | 同辅助功能（CGEvent 模拟 Cmd+C） | 无需 |
 | 开机自启 | SMAppService（App 需在 Applications） | 注册表 Run 键 |
-| 密钥 | Keychain（未签名构建会弹授权） | Credential Manager |
+| 密钥 | v1：`keys.json` 明文；签名后可升级加密库 / Keychain（§6.2） | 同左 |
 
 **首次引导：** 冷启后 WebView 就绪即查 `permissions_snapshot`。macOS 且辅助功能未开、且用户未跳过 → 自动显示面板，内容换成全屏引导页（不是 DOM 遮罩对话框）。「去开启」调用 `AXIsProcessTrustedWithOptions(prompt)` 并跳到系统设置辅助功能页；引导页可见期间轮询状态。可「稍后再说」（仍可手动输入翻译）；跳过后不再自动弹出全屏引导，设置页状态卡 + 底栏告警继续提醒。Windows 无必需权限，跳过引导。
 
@@ -538,7 +561,7 @@ jiti/
 │  │  └─ tests/            #  Vitest
 │  └─ native/              # = src-tauri（Rust）
 │     ├─ src/commands/     #  IPC 命令层（薄，tauri-specta 标注）
-│     ├─ src/services/     #  selection / panel(含 objc2 原生缝) / keyring / engine_http / store
+│     ├─ src/services/     #  selection / panel(含 objc2 原生缝) / secrets / engine_http / store
 │     ├─ src/providers/    #  llm / deepl / youdao / google / languagetool
 │     └─ capabilities/     #  权限白名单
 ├─ docs/
@@ -626,7 +649,7 @@ jiti/
 5. **P1 · LLM 不稳定输出**：JSON 解析失败重试/降级；错误统一分类（密钥缺失 / 限流 / 网络）。
 6. **P1 · 中文输入法（IME）**：WebView2/WKWebView 的 Pinyin 候选框问题（§4.6 B.5），双语应用必测。
 7. **P1 · 首帧白闪**：mac `_doAfterNextPresentationUpdate` / Win `NavigationCompleted` 后才 show（§4.6 A.2 / B.1）。
-8. **P1 · 密钥存储打扰**：未签名 macOS 开发构建 Keychain 弹窗；开发期用临时内存 Key 验证。
+8. **P1 · 密钥明文落盘**：v1 用 `keys.json` 换取不弹密码；M5 签名公证后可升级加密库 / Keychain（§6.2）。WebView 始终拿不到明文。Key 不得写入历史 SQLite。
 9. **P2 · Windows 透明/圆角受限**：v1 稳妥视觉，Mica 增值。
 10. **P2 · macOS 自启**：SMAppService 要求 App 在 /Applications。
 11. **P2 · 国内网络可达性**：Provider 排序要贴合用户网络（有道/DeepSeek）。
@@ -639,12 +662,12 @@ jiti/
 | 里程碑 | 内容 | 阶段产物 |
 |---|---|---|
 | **M0 骨架** | tauri 初始化、Vue3 无边框隐藏窗、热键注册/显示/隐藏、**WebView 存活三件套（§4.6 A.1）**、首帧同步显示（A.2）、设置 store | 热键秒开的灰壳（不闪、不卡） |
-| **M1 翻译** | translate 命令（DeepL + 有道 + LLM）、选中捕获链（AX/UIA + 剪贴板兜底）、翻译 Tab、历史入库 | 选中即译可用 |
+| **M1 翻译** | translate 命令（DeepL + 有道 + LLM）、选中捕获链（AX/UIA + 剪贴板兜底）、翻译 Tab、历史入库；**密钥三分：Key 进 `keys.json`，不进 Keychain、不进历史库**（§6） | 选中即译可用，保存 Key 不再弹系统密码 |
 | **M2 语法** | LLM 语法提示词 + 流式 + 结构化解析、错误卡片、Languagetool 可选适配器 | 语法检查可用 |
 | **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结 | 错题本能用 |
 | **M4 设置完善** | 自启、i18n、主题、IME 专项 QA（快捷键重配已在设置页落地） | 可交付内测 |
-| **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、签名公证双端打包 | 可对外分发 |
-| **后置** | Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |
+| **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、**签名公证双端打包**（签名后 Keychain 可静默访问，为密钥升级铺路） | 可对外分发 |
+| **后置** | **密钥升级（可选，§6.2）**：`keys.json` → 加密库或 Keychain，一次性迁移、IPC 不变、Key 永不进历史表；Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |
 
 ---
 
@@ -681,11 +704,12 @@ jiti/
 - NSPanel（nonactivatingPanel / orderFrontRegardless / becomesKeyOnlyIfNeeded）：https://developer.apple.com/documentation/appkit/nspanel
 - Swift 平台支持 ：https://www.swift.org/platform-support/
 - UniFFI（Rust ↔ Swift/C# 绑定生成，预留演进路径）：https://github.com/mozilla/uniffi-rs
-- keyring crate（Keychain / Credential Manager）：https://crates.io/crates/keyring
+- tauri-plugin-store（settings.json / keys.json）：https://v2.tauri.app/plugin/store/
 
 **引擎**
 - LanguageTool（开源语法检查、可自托管）：https://dev.languagetool.org/
 - Raycast 开发者平台（React/TS 扩展体系参考）：https://developers.raycast.com/
+- Raycast 安全说明（加密本地库 + Keychain；password 偏好不进普通 JSON）：https://developers.raycast.com/information/security
 
 **设计 / 原生手感**
 - native-feel-cross-platform-desktop 技能（本架构 v0.2 的审计来源）：`references/01-philosophy.md` · `02-architecture.md` · `03-webview-survival.md` · `04-ipc-contract.md` · `05-memory-truths.md` · `06-native-conventions.md` · `checklists/decision-tree.md` · `checklists/ship-readiness.md`

@@ -1,5 +1,5 @@
 //! 设置命令：tauri-plugin-store 落盘 `settings.json`。
-//! Key/引擎配置走 keyring（M1+，§6.2），普通配置走本命令。
+//! API Key 走 `keys.json`（§6.2），普通配置走本命令。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
