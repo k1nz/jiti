@@ -5,6 +5,7 @@
 
 pub mod deepl;
 pub mod error;
+pub mod grammar;
 pub mod llm;
 pub mod youdao;
 

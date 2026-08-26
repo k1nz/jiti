@@ -181,7 +181,7 @@ pub async fn test_connection(
     Ok(format!("{provider} 连接正常"))
 }
 
-fn completions_url(base: &str) -> String {
+pub(crate) fn completions_url(base: &str) -> String {
     let base = base.trim_end_matches('/');
     if base.ends_with("/chat/completions") {
         base.to_string()

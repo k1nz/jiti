@@ -26,15 +26,26 @@ import type {
   HotkeysSnapshot,
   TranslateResult,
   SelectedText,
+  GrammarProgressEvent_Deserialize,
+  GrammarRequest_Deserialize,
 } from '../ipc/bindings';
-import { isStalePreferredCapture, shouldApplyCapture } from '../capture';
+import { Channel } from '@tauri-apps/api/core';
+import {
+  isStalePreferredCapture,
+  shouldApplyCapture,
+  shouldApplyDelayedCapture,
+  shouldAutoSubmitOnCapture,
+} from '../capture';
 import { isRecordingHotkey, shouldHidePanelOnEscape } from '../hotkeys';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
+import { useGrammarStore } from '../stores/grammar';
 import Hotkeys from './Hotkeys.vue';
 import Onboarding from './Onboarding.vue';
+import GrammarView from './components/GrammarView.vue';
 
 const store = usePanelStore();
+const grammar = useGrammarStore();
 const searchEl = ref<HTMLInputElement | null>(null);
 
 const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = [
@@ -47,7 +58,7 @@ const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = 
 
 const PLACEHOLDERS: Record<PanelMode, { icon: Component; line: string }> = {
   translate: { icon: IconLanguage, line: '输入文本，或选中一段文字后按快捷键' },
-  grammar: { icon: IconAbc, line: '语法检查 · M2 接入' },
+  grammar: { icon: IconAbc, line: '输入英语文本，或选中一段文字后按快捷键' },
   mistakes: { icon: IconNotebook, line: '还没有错题，检查一次就有了' },
   history: { icon: IconHistory, line: '暂无历史' },
   settings: { icon: IconSettings, line: '设置加载中' },
@@ -121,6 +132,27 @@ async function runTranslate(text = store.input) {
   }
 }
 
+async function runGrammar(text = store.input) {
+  const input = text.trim();
+  if (!input) return;
+  const id = grammar.begin();
+  const onProgress = new Channel<GrammarProgressEvent_Deserialize>();
+  onProgress.onmessage = (event) => grammar.applyProgress(id, event);
+  const request: GrammarRequest_Deserialize = { text: input, engine: 'llm' };
+  try {
+    const result = await unwrap(commands.grammarCheck(request, onProgress));
+    grammar.finish(id, result);
+    await reloadHistory();
+  } catch (err) {
+    grammar.fail(id, err as EngineErrorPayload);
+  }
+}
+
+function onSearchEnter() {
+  if (store.activeMode === 'translate') void runTranslate();
+  if (store.activeMode === 'grammar') void runGrammar();
+}
+
 function applyCapturedText(selected: SelectedText, epoch: number) {
   if (!shouldApplyCapture(epoch, captureEpoch.value, inputDirty.value)) return;
   if (isStalePreferredCapture(selected.text, selected.method, lastCommitted.value)) return;
@@ -132,9 +164,27 @@ function applyCapturedText(selected: SelectedText, epoch: number) {
   // 捕获后绝不抢焦点：否则下次热键会读到自己输入框里的旧选区。
   if (!selected.text.trim()) return;
   lastCommitted.value = selected.text;
-  if (store.activeMode !== 'translate') return;
-  target.value = guessTarget(selected.text);
-  void runTranslate(selected.text);
+  if (!shouldAutoSubmitOnCapture(store.activeMode, selected.text)) return;
+  if (store.activeMode === 'translate') {
+    target.value = guessTarget(selected.text);
+    void runTranslate(selected.text);
+    return;
+  }
+  void runGrammar(selected.text);
+}
+
+function applyDelayedCapture(selected: SelectedText, epoch: number) {
+  if (
+    !shouldApplyDelayedCapture(
+      epoch,
+      captureEpoch.value,
+      inputDirty.value,
+      store.input,
+    )
+  ) {
+    return;
+  }
+  applyCapturedText(selected, epoch);
 }
 
 function onSearchInput() {
@@ -143,7 +193,10 @@ function onSearchInput() {
 }
 
 async function copyResult() {
-  const output = translateResult.value?.output;
+  const output =
+    store.activeMode === 'grammar'
+      ? grammar.correctedText
+      : translateResult.value?.output;
   if (!output) return;
   try {
     await navigator.clipboard.writeText(output);
@@ -367,9 +420,17 @@ const translateShortcut = computed(() => {
 
 const translateHint = computed(() => `输入文本，或选中一段文字后按 ${translateShortcut.value}`);
 
+const grammarShortcut = computed(() => {
+  const bind = hotkeys.value?.bindings.find((item) => item.id === 'grammar');
+  if (bind?.display) return bind.display;
+  return permissions.value?.platform === 'windows' ? 'Ctrl+Alt+G' : '⌥⌘G';
+});
+
+const grammarHint = computed(() => `输入英语文本，或选中一段文字后按 ${grammarShortcut.value}`);
+
 const placeholder = computed(() => {
   if (store.activeMode === 'translate') return translateHint.value;
-  if (store.activeMode === 'grammar') return '语法检查 · M2';
+  if (store.activeMode === 'grammar') return grammarHint.value;
   return TABS.find((tab) => tab.key === store.activeMode)?.label ?? '输入';
 });
 
@@ -393,7 +454,10 @@ async function onKeydown(e: KeyboardEvent) {
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
     const tag = (document.activeElement as HTMLElement | null)?.tagName;
-    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && translateResult.value) {
+    const hasCopy =
+      (store.activeMode === 'grammar' && grammar.correctedText) ||
+      (store.activeMode !== 'grammar' && translateResult.value);
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && hasCopy) {
       e.preventDefault();
       await copyResult();
     }
@@ -422,11 +486,12 @@ onMounted(async () => {
       translateResult.value = null;
       translateError.value = null;
     }
+    if (kind === 'grammar') grammar.reset();
     applyCapturedText(event.payload.selection, event.payload.epoch);
   });
   unlistenCapture = await events.captureChanged.listen((event) => {
     if (store.activeMode !== 'translate' && store.activeMode !== 'grammar') return;
-    applyCapturedText(event.payload.selection, event.payload.epoch);
+    applyDelayedCapture(event.payload.selection, event.payload.epoch);
   });
   unlistenVisibility = await listen<string>('panel://visibility', (event) => {
     store.onVisibility(event.payload === 'shown');
@@ -492,7 +557,7 @@ watch(
         autocomplete="off"
         @focus="onInputFocus"
         @input="onSearchInput"
-        @keydown.enter.prevent="store.activeMode === 'translate' && runTranslate()"
+        @keydown.enter.prevent="onSearchEnter"
       />
     </header>
 
@@ -568,6 +633,15 @@ watch(
         </div>
       </section>
 
+      <GrammarView
+        v-else-if="store.activeMode === 'grammar'"
+        :input="store.input"
+        :hint="grammarHint"
+        :copy-label="copyLabel"
+        @check="runGrammar()"
+        @copy="copyResult"
+      />
+
       <section v-else-if="store.activeMode === 'history'" class="history-view">
         <div class="pane-header">
           <span>历史记录</span>
@@ -590,6 +664,7 @@ watch(
             <div class="history-input">{{ entry.input }}</div>
             <div class="history-output">{{ entry.output }}</div>
             <div class="meta">
+              <span>{{ entry.kind === 'grammar' ? '语法' : '翻译' }}</span>
               <span>{{ entry.engine }}</span>
               <span>{{ entry.durationMs }} ms</span>
               <span>{{ formatTime(entry.createdAt) }}</span>

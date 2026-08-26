@@ -160,7 +160,7 @@ impl EngineError {
             ),
             EngineError::BadRequest { provider, detail } => (
                 format!("{provider} 拒绝了本次请求"),
-                Some("可尝试换文本长度或改翻译方向".into()),
+                Some("检查文本内容与长度后重试".into()),
                 format!("[jiti] {code}: {provider} {detail}"),
             ),
             EngineError::InvalidResponse { provider, detail } => (

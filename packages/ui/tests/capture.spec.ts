@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStalePreferredCapture, shouldApplyCapture } from '../src/capture';
+import { isStalePreferredCapture, shouldApplyCapture, shouldApplyDelayedCapture, shouldAutoSubmitOnCapture } from '../src/capture';
 
 describe('shouldApplyCapture', () => {
   it('只接受当前这次热键的捕获', () => {
@@ -22,5 +22,22 @@ describe('isStalePreferredCapture', () => {
     expect(isStalePreferredCapture('world', 'ax', 'hello')).toBe(false);
     expect(isStalePreferredCapture('hello', 'clipboard', 'hello')).toBe(false);
     expect(isStalePreferredCapture('', 'ax', 'hello')).toBe(false);
+  });
+});
+
+describe('shouldApplyDelayedCapture', () => {
+  it('输入已有内容时不采用迟到的剪贴板', () => {
+    expect(shouldApplyDelayedCapture(2, 2, false, 'already')).toBe(false);
+    expect(shouldApplyDelayedCapture(2, 2, false, '')).toBe(true);
+    expect(shouldApplyDelayedCapture(1, 2, false, '')).toBe(false);
+  });
+});
+
+describe('shouldAutoSubmitOnCapture', () => {
+  it('语法热键拿到非空选区后自动检查', () => {
+    expect(shouldAutoSubmitOnCapture('grammar', 'He go to school.')).toBe(true);
+    expect(shouldAutoSubmitOnCapture('translate', 'hello')).toBe(true);
+    expect(shouldAutoSubmitOnCapture('grammar', '  ')).toBe(false);
+    expect(shouldAutoSubmitOnCapture('mistakes', 'He go to school.')).toBe(false);
   });
 });

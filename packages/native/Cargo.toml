@@ -12,7 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "specta"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-store = "2"
@@ -22,7 +22,10 @@ specta-typescript = "=0.0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 async-trait = "0.1"
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", features = ["json", "stream"] }
+eventsource-stream = "0.2"
+futures-util = "0.3"
+bytes = "1"
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 
 # macOS 原生缝（objc2）：无焦点面板 / 防节流 / 首帧同步 / 光标定位

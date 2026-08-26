@@ -1,10 +1,10 @@
 # Jiti · 快速翻译 / 语法检查桌面工具 · 技术架构设计
 
 > 工作代号：**Jiti**（可随时改名）
-> 版本：**v0.2.1** · 2026-08-26 · 面向 macOS 与 Windows 10/11
+> 版本：**v0.2.2** · 2026-08-26 · 面向 macOS 与 Windows 10/11
 > 目标形态：Raycast 风格的小弹窗，全局快捷键唤起，常驻后台，秒级显示
 > v0.2 变更：依据 `native-feel-cross-platform-desktop` 技能完成架构审计（哲学八原则、WebView 存活清单、IPC 单契约、内存基线修正），依据 `design-taste-frontend` 重写 UI 层设计规范
-> v0.2.1 变更：数据层三分法（`settings.json` / SQLite / `keys.json`）；里程碑补密钥升级路径（签名公证后可走加密库 + Keychain，Key 不进明文历史库）
+> v0.2.2 变更：M2 语法检查闭环（SSE+NDJSON、错误卡片、grammar 历史、进程内 LRU）；LanguageTool / 错题本仍属后续里程碑
 
 ---
 
@@ -120,13 +120,20 @@ Rust: 取 keys.json→DeepL key → reqwest POST → 归一化 → 写 history �
 Vue: 渲染译文 + 来源引擎 + 耗时；⌘C 复制 / Esc 隐藏
 ```
 
-**语法检查（LLM 流式，给「打字机」体验）**
+**语法检查（M2：单次 OpenAI 兼容请求 + SSE + NDJSON）**
 ```
-Vue ─▶ invoke grammar_check{text, engine:'llm', model:'...', on_progress: Channel}
-Rust: 组装提示词 → reqwest SSE 流式 → 每个 chunk 通过 Channel 推给 Vue
-Vue: 流式文本（这就是"加载态"，非骨架屏）→ 结束返回结构化 JSON(GrammarResult)
-Vue: 渲染错误卡片；用户点「收录错题」──▶ invoke mistakes_save
+热键 ⌥⌘G / Ctrl+Alt+G 或手动 Enter
+  ─▶ Vue GrammarView 填入选中文本
+  ─▶ invoke grammar_check{text, engine:'llm', on_progress: Channel}
+Rust: 组装固定提示词 → reqwest SSE（20s 超时）
+    → 按 SSE 帧抽出 token → 按 NDJSON 行解码
+    → Channel 立即推 overall / correctedText / error / retrying / finished
+    → 聚合校验后返回 GrammarResult；成功写入 history（kind=grammar，改写进 output，全文进 meta）
+Vue: 首条语义记录即出卡片；用户从不看到 JSON/SSE。⌘C 复制改写。
+结构解析失败：清空临时结果，非流式严格 JSON 再打一次。网络/鉴权/限流不重试。
 ```
+
+M2 边界：不做 LanguageTool、错题 CRUD、「收录错题」按钮、AI 复习、后台取消。LanguageTool 后续只加适配器并复用同一 `GrammarResult`。
 
 ### 3.5 IPC 契约：一份 schema，两端编译期同步
 
@@ -304,8 +311,8 @@ defaults:
 统一进出参：`TranslateRequest{text, from?, to}` → `TranslateResult{output, detectedFrom, engine, durationMs}`。
 
 ### 5.3 语法检查适配器
-- **LLM（主力，流式）**：按 §5.5 提示词返回结构化 JSON。讲清「错在哪、为什么」，面向英语学习者，这是对比 Grammarly 的差异化。
-- **Languagetool（可选，离线）**：本地服务 / 在线免费 API，rule-based，归一化成同一 Schema。
+- **LLM（M2 主力）**：单次 chat/completions。`stream=true` 走 SSE；业务协议是 NDJSON 行（`overall` → `correctedText` → `error*` → `done`），不是自然语言打字机，也不是二次 JSON 请求。模型只返回原文片段；Rust 仅在片段唯一匹配时写入 Unicode 字符偏移。温度固定接近 0。解析失败（缺行 / 非法枚举 / 无 `done`）清空临时结果并**只重试一次**非流式严格 JSON。
+- **LanguageTool（M3+ 可选）**：enum-match 已留分支，M2 不实现配置和 UI。归一化目标仍是同一 `GrammarResult`。
 
 ### 5.4 结果标准化 Schema（两端共用，由 tauri-specta 生成）
 
@@ -319,6 +326,7 @@ interface GrammarResult {
   errors: GrammarError[];
   correctedText?: string;   // 整句改后
   overall?: string;         // 一句话总评（中文）
+  durationMs: number;
 }
 interface GrammarError {
   offset?: number; length?: number;   // 原文 rune 偏移（可选）
@@ -331,10 +339,10 @@ interface GrammarError {
 ```
 
 ### 5.5 LLM 提示词设计与成本控制
-- 提示词固定「系统提示 + 用户原文」，强制只输出 JSON（给精确 schema + 少量示例；解析失败重试 1 次、降级宽松解析）。
-- 默认模型选最便宜档（gpt-4o-mini / deepseek-chat / haiku），`maxTokens` 上限 1024。
-- 相同输入的**内存 LRU 缓存**；请求级超时（语法 20s / 翻译 8s）。
-- AI 复习复用同一 LLM Provider，单独 prompt，只读历史错误聚合高频类型。
+- 语法：系统提示固定英语检查、中文讲解、封闭枚举和 NDJSON 顺序；翻译仍输出纯文本。
+- 默认模型选最便宜档（gpt-4o-mini / deepseek-chat / haiku），`maxTokens` 上限沿用 Provider 配置，缺省 1024。
+- 相同输入的**内存 LRU 缓存**（键含输入、模型、Base URL、提示词版本）；请求级超时（语法 20s / 翻译 8s）。连接池共享，超时不绑在 Client 上。
+- AI 复习复用同一 LLM Provider，单独 prompt，只读历史错误聚合高频类型（M3）。
 
 ### 5.6 商业化（SaaS）预留边界
 1. **Transport 抽象**：Rust 侧「出网」封装 `Transport` trait，v1 是 `LocalTransport`（reqwest + keys.json）；未来加 `RemoteTransport`，UI 零改动。
@@ -625,7 +633,7 @@ jiti/
 | 热键 → 弹窗显示（暖） | <30ms（预创建 + hide/show，禁按热键才建窗） |
 | 冷启 → 可交互 | <600ms（macOS）/ <900ms（Win） |
 | 翻译首字感知 | <1s（非 LLM）；LLM 流式首 chunk <1.2s |
-| 语法检查 | 流式文本即时反馈，20s 硬超时 |
+| 语法检查 | 首条 NDJSON 语义记录即更新界面；20s 硬超时 |
 | 后台 CPU | 隐藏时 <0.5%（节流配置见 §4.6） |
 
 **自有边际成本的优化顺序（先于任何"降内存"讨论）：**
@@ -663,7 +671,7 @@ jiti/
 |---|---|---|
 | **M0 骨架** | tauri 初始化、Vue3 无边框隐藏窗、热键注册/显示/隐藏、**WebView 存活三件套（§4.6 A.1）**、首帧同步显示（A.2）、设置 store | 热键秒开的灰壳（不闪、不卡） |
 | **M1 翻译** | translate 命令（DeepL + 有道 + LLM）、选中捕获链（AX/UIA + 剪贴板兜底）、翻译 Tab、历史入库；**密钥三分：Key 进 `keys.json`，不进 Keychain、不进历史库**（§6） | 选中即译可用，保存 Key 不再弹系统密码 |
-| **M2 语法** | LLM 语法提示词 + 流式 + 结构化解析、错误卡片、Languagetool 可选适配器 | 语法检查可用 |
+| **M2 语法** | LLM NDJSON 流式 + 一次结构重试、错误卡片、grammar 历史；LanguageTool 仅留分支 | 语法检查可用（LanguageTool / 错题本不在本阶段） |
 | **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结 | 错题本能用 |
 | **M4 设置完善** | 自启、i18n、主题、IME 专项 QA（快捷键重配已在设置页落地） | 可交付内测 |
 | **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、**签名公证双端打包**（签名后 Keychain 可静默访问，为密钥升级铺路） | 可对外分发 |
