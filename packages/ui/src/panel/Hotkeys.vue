@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { commands, type HotkeyId, type HotkeysSnapshot } from '../ipc/bindings';
-import { acceleratorFromCombo } from '../hotkeys';
+import { acceleratorFromCombo, isRecordingHotkey } from '../hotkeys';
 
 const props = defineProps<{
   snapshot: HotkeysSnapshot;
@@ -13,6 +13,9 @@ const emit = defineEmits<{
 
 const recording = ref<HotkeyId | null>(null);
 const error = ref<string | null>(null);
+const armed = ref(false);
+let pendingAccelerator: string | null = null;
+let listening = false;
 
 function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
   return promise.then((result) => {
@@ -23,13 +26,66 @@ function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error
 
 const unregistered = computed(() => props.snapshot.bindings.filter((bind) => !bind.registered));
 
-async function startRecord(id: HotkeyId) {
+function attachListeners() {
+  if (listening) return;
+  window.addEventListener('keydown', onCaptureKeydown, true);
+  window.addEventListener('pointerdown', onCapturePointerDown, true);
+  listening = true;
+}
+
+function detachListeners() {
+  if (!listening) return;
+  window.removeEventListener('keydown', onCaptureKeydown, true);
+  window.removeEventListener('pointerdown', onCapturePointerDown, true);
+  listening = false;
+}
+
+function onCapturePointerDown(event: PointerEvent) {
+  if (recording.value === null) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('.hotkey-bind')) return;
+  void stopRecord();
+}
+
+function onCaptureKeydown(event: KeyboardEvent) {
+  if (recording.value === null || event.repeat) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (event.key === 'Escape') {
+    void stopRecord();
+    return;
+  }
+  const accelerator = acceleratorFromCombo(event);
+  if (!accelerator) return;
+  if (!armed.value) {
+    pendingAccelerator = accelerator;
+    return;
+  }
+  void commit(recording.value, accelerator);
+}
+
+async function startRecord(id: HotkeyId, event: MouseEvent) {
   error.value = null;
+  pendingAccelerator = null;
   recording.value = id;
+  isRecordingHotkey.value = true;
+  armed.value = false;
+  attachListeners();
+  (event.currentTarget as HTMLButtonElement | null)?.focus();
   try {
     await commands.hotkeysSuspend();
+    if (recording.value !== id) return;
+    armed.value = true;
+    if (pendingAccelerator) {
+      const accelerator = pendingAccelerator;
+      pendingAccelerator = null;
+      await commit(id, accelerator);
+    }
   } catch (err) {
     recording.value = null;
+    isRecordingHotkey.value = false;
+    armed.value = false;
+    detachListeners();
     error.value = String(err);
   }
 }
@@ -37,6 +93,10 @@ async function startRecord(id: HotkeyId) {
 async function stopRecord() {
   if (recording.value === null) return;
   recording.value = null;
+  isRecordingHotkey.value = false;
+  armed.value = false;
+  pendingAccelerator = null;
+  detachListeners();
   try {
     await commands.hotkeysResume();
   } catch (err) {
@@ -44,17 +104,12 @@ async function stopRecord() {
   }
 }
 
-async function onBindKeydown(id: HotkeyId, event: KeyboardEvent) {
-  if (recording.value !== id) return;
-  event.preventDefault();
-  event.stopPropagation();
-  if (event.key === 'Escape') {
-    await stopRecord();
-    return;
-  }
-  const accelerator = acceleratorFromCombo(event);
-  if (!accelerator) return;
+async function commit(id: HotkeyId, accelerator: string) {
   recording.value = null;
+  isRecordingHotkey.value = false;
+  armed.value = false;
+  pendingAccelerator = null;
+  detachListeners();
   try {
     emit('updated', await unwrap(commands.hotkeysSet(id, accelerator)));
     error.value = null;
@@ -70,6 +125,10 @@ async function onBindKeydown(id: HotkeyId, event: KeyboardEvent) {
 
 async function reset() {
   recording.value = null;
+  isRecordingHotkey.value = false;
+  armed.value = false;
+  pendingAccelerator = null;
+  detachListeners();
   try {
     emit('updated', await unwrap(commands.hotkeysReset()));
     error.value = null;
@@ -81,6 +140,10 @@ async function reset() {
 onBeforeUnmount(() => {
   if (recording.value === null) return;
   recording.value = null;
+  isRecordingHotkey.value = false;
+  armed.value = false;
+  pendingAccelerator = null;
+  detachListeners();
   void commands.hotkeysResume();
 });
 </script>
@@ -102,11 +165,10 @@ onBeforeUnmount(() => {
         class="hotkey-bind"
         :class="{ recording: recording === bind.id, warn: !bind.registered }"
         type="button"
+        tabindex="0"
         :aria-label="`修改${bind.title}快捷键，当前 ${bind.display}`"
         :aria-pressed="recording === bind.id"
-        @click="startRecord(bind.id)"
-        @keydown="onBindKeydown(bind.id, $event)"
-        @blur="stopRecord"
+        @click="startRecord(bind.id, $event)"
       >
         {{ recording === bind.id ? '按下组合键…' : bind.display }}
       </button>

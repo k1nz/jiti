@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acceleratorFromCombo } from '../src/hotkeys';
+import { acceleratorFromCombo, isRecordingHotkey, shouldHidePanelOnEscape } from '../src/hotkeys';
 
 describe('acceleratorFromCombo', () => {
   it('把 Windows 翻译默认键写成 Ctrl+Shift+T', () => {
@@ -45,5 +45,12 @@ describe('acceleratorFromCombo', () => {
         metaKey: false,
       }),
     ).toBeNull();
+  });
+
+  it('录制中面板不应把 Esc 当成关窗', () => {
+    isRecordingHotkey.value = true;
+    expect(shouldHidePanelOnEscape()).toBe(false);
+    isRecordingHotkey.value = false;
+    expect(shouldHidePanelOnEscape()).toBe(true);
   });
 });

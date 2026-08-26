@@ -1,5 +1,14 @@
 /** 全局热键录制：KeyboardEvent → tauri-plugin-global-shortcut 可解析的 accelerator。 */
 
+import { ref } from 'vue';
+
+/** 录制进行中：面板级 Esc/Tab 必须让路，否则会关窗或切走设置页。 */
+export const isRecordingHotkey = ref(false);
+
+export function shouldHidePanelOnEscape(): boolean {
+  return !isRecordingHotkey.value;
+}
+
 const MODIFIER_CODES = new Set([
   'ShiftLeft',
   'ShiftRight',

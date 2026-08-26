@@ -27,6 +27,7 @@ import type {
   TranslateResult,
   SelectedText,
 } from '../ipc/bindings';
+import { isRecordingHotkey, shouldHidePanelOnEscape } from '../hotkeys';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 import Hotkeys from './Hotkeys.vue';
@@ -358,7 +359,12 @@ const placeholder = computed(() => {
 });
 
 async function onKeydown(e: KeyboardEvent) {
+  if (isRecordingHotkey.value) {
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape') {
+    if (!shouldHidePanelOnEscape()) return;
     e.preventDefault();
     await commands.hidePopup();
     return;
