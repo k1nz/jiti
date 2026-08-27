@@ -3,7 +3,7 @@
 //! M0 铁律（§4.1 / 验收红线）：
 //! - 热键只触发“显示已创建的隐藏窗”，绝不按热键建窗；
 //! - 关闭 = 隐藏（alpha=0 + 忽略鼠标），不销毁进程/SQLite 之外的任何东西；
-//! - 显示不抢焦点（macOS orderFrontRegardless + Accessory 策略），不打断前台 App 输入。
+//! - 显示默认抢焦点（`set_focus`）；设置里可关掉，改走 macOS `orderFrontRegardless` / Windows `show()` 不激活路径。
 //!
 //! 失焦关闭：默认未固定时，真正失去焦点或点到其他 App 即隐藏；图钉固定后保持打开。
 //! Windows：装饰区 start_dragging 的伪失焦不关窗；另有外点监视补齐「已失焦后再点外部」路径。
@@ -82,7 +82,7 @@ impl Mode {
     }
 }
 
-/// 显示面板：定位到光标附近 → 无焦点显示。
+/// 显示面板：定位到光标附近；是否抢焦点由 `prefs.focusOnInvoke` 决定（默认抢）。
 pub fn show_panel(app: &AppHandle, mode: Mode) {
     show_panel_inner(app, mode, true);
 }
@@ -127,6 +127,9 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
             let _ = win.set_resizable(false);
             reveal(&win);
             mark_shown();
+            if crate::services::prefs::load_prefs(&inner).focus_on_invoke {
+                request_panel_focus(&win);
+            }
         }
         let _ = crate::services::selection::HotkeyPressedEvent {
             mode: mode.as_str().to_string(),
@@ -330,6 +333,12 @@ fn reveal(win: &WebviewWindow) {
     {
         let _ = win.show();
     }
+}
+
+/// 把键盘交给面板。须在 `reveal` 之后调用：macOS 的 `set_focus` 要求窗口已可见。
+/// Windows 剪贴板兜底依赖源窗口仍是前台，抢焦点后会主动跳过，以免 Ctrl+C 打到搜索框。
+fn request_panel_focus(win: &WebviewWindow) {
+    let _ = win.set_focus();
 }
 
 fn conceal(win: &WebviewWindow) {

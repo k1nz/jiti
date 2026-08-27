@@ -25,3 +25,6 @@ packages/native/icons/ios/
 
 # Local pnpm store artifacts
 .pnpm-store/
+
+# Cursor AI
+.cursor/

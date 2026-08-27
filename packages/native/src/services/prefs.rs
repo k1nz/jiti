@@ -1,4 +1,4 @@
-//! 通用偏好：界面语言、主题（settings.json `prefs` 键）。
+//! 通用偏好：界面语言、主题、唤起聚焦（settings.json `prefs` 键）。
 //! 开机自启状态来自系统注册，不写进 JSON。
 
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,8 @@ impl Default for ThemePref {
 pub struct Prefs {
     pub locale: UiLocale,
     pub theme: ThemePref,
+    /// 热键/托盘唤起时是否把键盘焦点交给面板。缺省 true。
+    pub focus_on_invoke: bool,
 }
 
 impl Default for Prefs {
@@ -55,6 +57,7 @@ impl Default for Prefs {
         Self {
             locale: UiLocale::System,
             theme: ThemePref::System,
+            focus_on_invoke: true,
         }
     }
 }
@@ -72,6 +75,7 @@ pub struct PreferencesSnapshot {
     pub locale: UiLocale,
     pub theme: ThemePref,
     pub autostart: AutostartStatus,
+    pub focus_on_invoke: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -83,6 +87,8 @@ pub struct PreferencesPatch {
     pub theme: Option<ThemePref>,
     #[serde(default)]
     pub autostart: Option<bool>,
+    #[serde(default)]
+    pub focus_on_invoke: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Event)]
@@ -107,6 +113,10 @@ pub fn prefs_from_value(value: Option<&Value>) -> Prefs {
             Some("dark") => ThemePref::Dark,
             _ => ThemePref::System,
         },
+        focus_on_invoke: map
+            .get("focusOnInvoke")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
     }
 }
 
@@ -114,6 +124,7 @@ pub fn prefs_to_value(prefs: Prefs) -> Value {
     json!({
         "locale": prefs.locale,
         "theme": prefs.theme,
+        "focusOnInvoke": prefs.focus_on_invoke,
     })
 }
 
@@ -136,6 +147,7 @@ pub fn snapshot(app: &AppHandle) -> PreferencesSnapshot {
         locale: prefs.locale,
         theme: prefs.theme,
         autostart: autostart::status(app),
+        focus_on_invoke: prefs.focus_on_invoke,
     }
 }
 
@@ -146,6 +158,9 @@ pub fn update(app: &AppHandle, patch: PreferencesPatch) -> Result<PreferencesSna
     }
     if let Some(theme) = patch.theme {
         prefs.theme = theme;
+    }
+    if let Some(focus_on_invoke) = patch.focus_on_invoke {
+        prefs.focus_on_invoke = focus_on_invoke;
     }
     if let Some(enabled) = patch.autostart {
         autostart::set_enabled(app, enabled)?;
@@ -206,9 +221,18 @@ mod tests {
         let prefs = Prefs {
             locale: UiLocale::EnUs,
             theme: ThemePref::Dark,
+            focus_on_invoke: false,
         };
         let value = prefs_to_value(prefs);
         assert_eq!(prefs_from_value(Some(&value)), prefs);
+    }
+
+    #[test]
+    fn missing_focus_on_invoke_defaults_to_true() {
+        let prefs = prefs_from_value(Some(&json!({"locale": "en-US", "theme": "dark"})));
+        assert!(prefs.focus_on_invoke);
+        assert_eq!(prefs.locale, UiLocale::EnUs);
+        assert_eq!(prefs.theme, ThemePref::Dark);
     }
 
     #[test]

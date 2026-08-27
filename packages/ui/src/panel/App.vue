@@ -15,6 +15,7 @@ import {
   IconSettings,
   IconTrash,
 } from '@tabler/icons-vue';
+import { currentPreferences } from '../bootstrap';
 import { commands, events } from '../ipc/bindings';
 import type {
   EngineErrorPayload,
@@ -498,6 +499,9 @@ watch(
     if (visible) void refreshPermissions();
     if (visible && (showOnboarding.value || permissionWarning.value)) startPermissionPoll();
     if (!visible && !showOnboarding.value) stopPermissionPoll();
+    if (visible && currentPreferences().focusOnInvoke && !showOnboarding.value) {
+      void nextTick(() => searchEl.value?.focus());
+    }
   },
 );
 </script>

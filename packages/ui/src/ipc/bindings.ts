@@ -342,12 +342,14 @@ export type PreferencesPatch = {
 	locale?: UiLocale | null,
 	theme?: ThemePref | null,
 	autostart?: boolean | null,
+	focusOnInvoke?: boolean | null,
 };
 
 export type PreferencesSnapshot = {
 	locale: UiLocale,
 	theme: ThemePref,
 	autostart: AutostartStatus,
+	focusOnInvoke: boolean,
 };
 
 /**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。 */

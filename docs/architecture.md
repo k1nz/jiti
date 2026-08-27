@@ -222,11 +222,9 @@ tauri_specta::ts::export(
 快速词典类工具的关键：弹窗出现时**不打断用户在原应用里的输入**。系统原生做法是 `NSPanel` + `nonactivatingPanel` + `orderFrontRegardless` + `becomesKeyOnlyIfNeeded`。Tauri 窗口是普通 NSWindow，经 `objc2` 补：
 
 1. `set_activation_policy(Accessory)`，应用不成为前台主应用。
-2. 显示时绕过 `activate()`，调 `orderFrontRegardless`。
-3. 焦点策略：默认不夺焦；用户点进输入框（手动模式）才 `set_focus()`。
+2. 显示时先 `orderFrontRegardless`（不激活也能出画面）。
+3. 焦点策略：`prefs.focusOnInvoke`（默认 true）为真时 `set_focus()`；关掉则保持不激活，不打断原应用输入。用户点进输入框仍会成为 key。
 4. 材质走 `NSVisualEffectView`（macOS 26+ 可评估 `NSGlassEffectView`），透明由 `macosPrivateApi` 开启，WebView `drawsBackground=false` + CSS `background: transparent`。
-
-> ⚠️ 若 v1 为保进度接受「激活才显示/手动输入必须焦点」的简化，设置里留开关。**默认目标是不激活。**
 
 ### 4.3 Windows 差异
 - Win11 支持 Mica/Acrylic（`DWMWA_SYSTEMBACKDROP_TYPE` + `DwmExtendFrameIntoClientArea` + WebView2 透明背景），成熟度低于 macOS。v1 用稳妥视觉，Mica 作增值。

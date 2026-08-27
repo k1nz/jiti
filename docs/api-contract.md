@@ -1,6 +1,6 @@
 # Jiti IPC 契约
 
-> 版本：**SCHEMA_VERSION = 7** · 2026-08-27 · M5 RC
+> 版本：**SCHEMA_VERSION = 8** · 2026-08-27 · M5 RC
 > 事实源：`packages/native/src/ipc.rs`（tauri-specta 生成 `packages/ui/src/ipc/bindings.ts`）
 > 本文同时是未来远程后端 OpenAPI 初稿。破坏性变更必升 `SCHEMA_VERSION`；新字段一律 optional。
 
@@ -22,7 +22,7 @@
 | `mistakes_ai_review` | `MistakeFilter` | `AiReviewResult` / `EngineErrorPayload` | 聚合频次+代表例句后请求 LLM；成功写 `history(kind=ai_review)` |
 | `history_list` / `history_clear` | — | 条目 / 删除行数 | 含 translate / grammar / ai_review |
 | `providers_*` / `provider_*` | 见绑定 | 快照 / 测试结果 | Key 只进 `keys.json` |
-| `preferences_snapshot` | — | `PreferencesSnapshot` | locale / theme / 真实自启状态 |
+| `preferences_snapshot` | — | `PreferencesSnapshot` | locale / theme / 唤起聚焦 / 真实自启状态 |
 | `preferences_update` | `PreferencesPatch` | `PreferencesSnapshot` / string | 自启失败时返回错误，UI 回滚 |
 | `open_settings` | — | — | 独立设置窗口：已有则聚焦，否则创建；关闭即销毁 |
 | `hotkeys_*` / `permissions_*` / `panel_*` / `settings_*` | 见绑定 | — | 壳层能力 |
@@ -53,6 +53,7 @@ PreferencesSnapshot {
   locale: "system" | "zh-CN" | "en-US"
   theme: "system" | "light" | "dark"
   autostart: { enabled: boolean, hint: string | null }
+  focusOnInvoke: boolean          // 默认 true；缺省按 true
 }
 ```
 

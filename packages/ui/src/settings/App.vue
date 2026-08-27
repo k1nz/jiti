@@ -46,6 +46,8 @@ const NAV: ReadonlyArray<{
       'settings.theme',
       'settings.startup',
       'settings.autostart',
+      'settings.panel',
+      'settings.focusOnInvoke',
       'settings.permissions',
       'permissions.accessibility.title',
     ],
@@ -229,6 +231,14 @@ function onAutostart(event: Event) {
     };
   }
   void patchPrefs({ autostart: enabled });
+}
+
+function onFocusOnInvoke(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked;
+  if (prefs.value) {
+    prefs.value = { ...prefs.value, focusOnInvoke: enabled };
+  }
+  void patchPrefs({ focusOnInvoke: enabled });
 }
 
 function onToggleProvider(id: string, event: Event) {
@@ -478,6 +488,33 @@ onBeforeUnmount(() => {
                 <option value="light">{{ t('settings.themeLight') }}</option>
                 <option value="dark">{{ t('settings.themeDark') }}</option>
               </select>
+            </div>
+          </div>
+        </section>
+
+        <section
+          v-if="prefs && matchesQuery(t('settings.panel'), t('settings.focusOnInvoke'))"
+          class="settings-group"
+        >
+          <div class="settings-group-head">
+            <h2>{{ t('settings.panel') }}</h2>
+          </div>
+          <div class="settings-list">
+            <div class="settings-item">
+              <div class="settings-item-copy">
+                <span>{{ t('settings.focusOnInvoke') }}</span>
+                <p>{{ t('settings.focusOnInvokeHint') }}</p>
+              </div>
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  :checked="prefs.focusOnInvoke"
+                  :aria-checked="prefs.focusOnInvoke"
+                  @change="onFocusOnInvoke"
+                />
+                <span class="switch-track" />
+              </label>
             </div>
           </div>
         </section>
