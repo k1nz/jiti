@@ -28,7 +28,7 @@ jobs:
             rust_target: x86_64-apple-darwin
           - name: windows-x64
             os: windows-latest
-            args: --target x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --bundles nsis
             rust_target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
@@ -53,20 +53,22 @@ jobs:
         shell: bash
         run: |
           mkdir -p checksums
-          {
-            find packages/native/target -type f \( \
-              -name '*.dmg' -o -name '*.app' -o -name '*.msi' -o -name '*.exe' \
-            \) 2>/dev/null
-            find src-tauri/target -type f \( \
-              -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \
-            \) 2>/dev/null
-          } | sort -u | while read -r f; do
-            if command -v shasum >/dev/null; then
-              shasum -a 256 "$f"
-            else
-              sha256sum "$f"
-            fi
-          done | tee checksums/${{ matrix.name }}.sha256
+          out="checksums/${{ matrix.name }}.sha256"
+          mapfile -t files < <(
+            find packages/native/target -path '*/bundle/*' -type f \
+              \( -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
+              | sort -u
+          )
+          if ((${#files[@]} == 0)); then
+            echo "No installer artifacts found under packages/native/target/**/bundle"
+            : > "$out"
+            exit 0
+          fi
+          if command -v shasum >/dev/null; then
+            shasum -a 256 "${files[@]}" | tee "$out"
+          else
+            sha256sum "${files[@]}" | tee "$out"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: jiti-0.5.0-rc.1-${{ matrix.name }}
