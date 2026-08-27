@@ -1537,6 +1537,103 @@ body {
   margin-bottom: 6px;
 }
 
+.mistakes-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.mistakes-body > .state-box,
+.mistakes-body > .error-box {
+  flex: 1;
+}
+
+.mistakes-filter {
+  position: relative;
+  z-index: 4;
+}
+
+.mistakes-filter-toggle.on,
+.mistakes-filter-toggle.on:hover {
+  color: var(--j-accent);
+  background: var(--j-tab-on);
+}
+
+.mistakes-filter-caret {
+  color: var(--j-faint);
+  transition: transform 160ms ease;
+}
+
+.mistakes-filter.open .mistakes-filter-caret {
+  transform: rotate(180deg);
+}
+
+.mistakes-filter.open .mistakes-filter-toggle:not(.on) {
+  color: var(--j-fg);
+  background: var(--j-hover);
+}
+
+.mistakes-filter-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  max-width: min(280px, calc(100vw - 36px));
+  padding: 8px;
+  background: color-mix(in srgb, var(--j-bg) 86%, var(--j-fg) 8%);
+  border: 1px solid var(--j-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--j-fg) 10%, transparent);
+  transform-origin: top right;
+}
+
+.mistakes-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mistakes-filter-group + .mistakes-filter-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--j-border);
+}
+
+.mistakes-filter-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--j-fg);
+}
+
+.mistakes-filter-panel .chip-row {
+  margin-bottom: 0;
+}
+
+.filter-panel-enter-active {
+  transition:
+    opacity 160ms ease-out,
+    transform 160ms ease-out;
+}
+
+.filter-panel-leave-active {
+  transition:
+    opacity 100ms ease-in,
+    transform 100ms ease-in;
+}
+
+.filter-panel-enter-from,
+.filter-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
 .chip {
   height: 24px;
   padding: 0 10px;
@@ -1579,6 +1676,7 @@ body {
 .mistakes-view {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .mistake-card-head {
