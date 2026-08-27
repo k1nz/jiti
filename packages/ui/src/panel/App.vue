@@ -38,6 +38,7 @@ import {
   shouldApplyDelayedCapture,
   shouldAutoSubmitOnCapture,
 } from '../capture';
+import { isSelectableTextTarget, shouldFocusSearchOnShellClick } from '../focus';
 import {
   guessTarget,
   languagePairLabel,
@@ -86,6 +87,7 @@ const captureEpoch = ref(0);
 const inputDirty = ref(false);
 const lastCommitted = ref('');
 let applyingCapture = false;
+const pointerDown = { x: 0, y: 0 };
 
 let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
@@ -100,11 +102,27 @@ function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error
   });
 }
 
+function onShellPointerDown(e: MouseEvent) {
+  pointerDown.x = e.clientX;
+  pointerDown.y = e.clientY;
+}
+
 function onShellClick(e: MouseEvent) {
-  const target = e.target as HTMLElement;
-  if (!target.closest('button, input, a, select, textarea')) {
-    searchEl.value?.focus();
+  const target = e.target;
+  if (!(target instanceof Element)) return;
+  const dx = e.clientX - pointerDown.x;
+  const dy = e.clientY - pointerDown.y;
+  if (
+    !shouldFocusSearchOnShellClick({
+      interactive: Boolean(target.closest('button, input, a, select, textarea, label')),
+      selectedText: window.getSelection()?.toString() ?? '',
+      selectable: isSelectableTextTarget(target),
+      dragDistance: Math.hypot(dx, dy),
+    })
+  ) {
+    return;
   }
+  searchEl.value?.focus();
 }
 
 async function runTranslate(text = store.input) {
@@ -589,7 +607,7 @@ watch(
 </script>
 
 <template>
-  <div class="shell" data-tauri-drag-region="deep" @click="onShellClick">
+  <div class="shell" data-tauri-drag-region="deep" @mousedown="onShellPointerDown" @click="onShellClick">
     <Onboarding
       v-if="showOnboarding && permissions"
       :snapshot="permissions"
