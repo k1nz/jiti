@@ -56,6 +56,9 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             services::panel::macos::apply_activation_policy(app.handle());
 
+            #[cfg(target_os = "windows")]
+            services::panel::windows::install_outside_click_dismiss(app.handle());
+
             services::hotkeys::register(app.handle())?;
             services::tray::setup(app)?;
 

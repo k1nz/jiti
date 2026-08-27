@@ -6,6 +6,7 @@
 //! - 显示不抢焦点（macOS orderFrontRegardless + Accessory 策略），不打断前台 App 输入。
 //!
 //! 失焦关闭：默认未固定时，真正失去焦点或点到其他 App 即隐藏；图钉固定后保持打开。
+//! Windows：装饰区 start_dragging 的伪失焦不关窗；另有外点监视补齐「已失焦后再点外部」路径。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -168,6 +169,14 @@ pub fn on_focus_changed(app: &AppHandle, focused: bool) {
         HAD_FOCUS.store(true, Ordering::SeqCst);
         return;
     }
+    // Windows：空白装饰区 `data-tauri-drag-region` → start_dragging 会在主键按下时抛出
+    // Focused(false)。此时若光标仍在面板内，视为拖窗伪失焦，不隐藏。
+    #[cfg(target_os = "windows")]
+    if let Some(win) = app.get_webview_window("main") {
+        if windows::is_chrome_drag_blur(&win) {
+            return;
+        }
+    }
     let had = HAD_FOCUS.swap(false, Ordering::SeqCst);
     if should_dismiss_on_blur(
         SHOWN.load(Ordering::SeqCst),
@@ -214,6 +223,20 @@ pub(crate) fn should_dismiss_on_blur(
 
 pub(crate) fn should_dismiss_on_click_outside(shown: bool, pinned: bool, in_grace: bool) -> bool {
     shown && !pinned && !in_grace
+}
+
+/// 物理坐标点是否落在窗口外接矩形内（含左边/顶边，不含右边/底边）。
+pub(crate) fn point_in_physical_rect(
+    px: i32,
+    py: i32,
+    rect_x: i32,
+    rect_y: i32,
+    rect_w: u32,
+    rect_h: u32,
+) -> bool {
+    let w = rect_w as i32;
+    let h = rect_h as i32;
+    px >= rect_x && py >= rect_y && px < rect_x + w && py < rect_y + h
 }
 
 fn apply_corner_radius(win: &WebviewWindow) {
@@ -632,11 +655,17 @@ pub mod macos {
 }
 
 #[cfg(target_os = "windows")]
-mod windows {
-    use tauri::{PhysicalPosition, WebviewWindow};
+pub mod windows {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
     use windows::Win32::Foundation::POINT;
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
     };
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -671,6 +700,70 @@ mod windows {
             8.0,
         );
         let _ = win.set_position(PhysicalPosition::new(x, y));
+    }
+
+    fn mouse_button_down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> bool {
+        unsafe { GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000 != 0 }
+    }
+
+    /// 光标是否仍在面板外接矩形内。
+    pub fn cursor_inside_panel(win: &WebviewWindow) -> bool {
+        let mut pt = POINT::default();
+        if unsafe { GetCursorPos(&mut pt) }.is_err() {
+            return false;
+        }
+        let Ok(pos) = win.outer_position() else {
+            return false;
+        };
+        let Ok(size) = win.outer_size() else {
+            return false;
+        };
+        super::point_in_physical_rect(pt.x, pt.y, pos.x, pos.y, size.width, size.height)
+    }
+
+    /// start_dragging 触发的伪失焦：主键按下且光标仍在面板上。
+    pub fn is_chrome_drag_blur(win: &WebviewWindow) -> bool {
+        mouse_button_down(VK_LBUTTON) && cursor_inside_panel(win)
+    }
+
+    /// 点到其他窗口时关闭。拖空白装饰区会先失焦，仅靠 Focused(false) 不够（已失焦后再点外部不会再收到失焦）。
+    pub fn install_outside_click_dismiss(app: &AppHandle) {
+        static INSTALLED: AtomicBool = AtomicBool::new(false);
+        if INSTALLED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let app = app.clone();
+        std::thread::Builder::new()
+            .name("jiti-win-outside-click".into())
+            .spawn(move || {
+                let mut was_down = false;
+                loop {
+                    let down =
+                        mouse_button_down(VK_LBUTTON) || mouse_button_down(VK_RBUTTON);
+                    if down && !was_down {
+                        let app_for_main = app.clone();
+                        let _ = app.run_on_main_thread(move || {
+                            if !super::should_dismiss_on_click_outside(
+                                super::SHOWN.load(Ordering::SeqCst),
+                                super::is_pinned(),
+                                super::in_blur_grace(),
+                            ) {
+                                return;
+                            }
+                            let Some(win) = app_for_main.get_webview_window("main") else {
+                                return;
+                            };
+                            if cursor_inside_panel(&win) {
+                                return;
+                            }
+                            super::hide_panel(&app_for_main);
+                        });
+                    }
+                    was_down = down;
+                    std::thread::sleep(Duration::from_millis(16));
+                }
+            })
+            .ok();
     }
 
     pub fn disable_browser_chrome(win: &WebviewWindow) {
@@ -743,6 +836,16 @@ mod tests {
         assert!(!should_dismiss_on_click_outside(true, true, false));
         assert!(!should_dismiss_on_click_outside(false, false, false));
         assert!(!should_dismiss_on_click_outside(true, false, true));
+    }
+
+    #[test]
+    fn point_in_physical_rect_covers_bounds() {
+        assert!(point_in_physical_rect(10, 20, 10, 20, 100, 50));
+        assert!(point_in_physical_rect(109, 69, 10, 20, 100, 50));
+        assert!(!point_in_physical_rect(9, 20, 10, 20, 100, 50));
+        assert!(!point_in_physical_rect(10, 19, 10, 20, 100, 50));
+        assert!(!point_in_physical_rect(110, 20, 10, 20, 100, 50));
+        assert!(!point_in_physical_rect(10, 70, 10, 20, 100, 50));
     }
 
     #[test]
