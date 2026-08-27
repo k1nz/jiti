@@ -109,7 +109,9 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         let input: String = conn
-            .query_row("SELECT input FROM history WHERE id = 1", [], |row| row.get(0))
+            .query_row("SELECT input FROM history WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(input, "Hello");
         conn.execute(

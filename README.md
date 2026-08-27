@@ -2,7 +2,9 @@
 
 快速翻译 / 语法检查桌面工具（工作代号）。Raycast 风格的系统级浮层：
 全局快捷键唤起、常驻后台、不抢焦点、秒级显示。架构见
-[docs/architecture.md](docs/architecture.md)（v0.4.0，决策以文档为准）。M4 已接通独立设置窗口、开机自启、界面语言、主题与 IME 专项 QA。IPC 契约见 [docs/api-contract.md](docs/api-contract.md)。
+[docs/architecture.md](docs/architecture.md)（v0.5.0-rc.1，决策以文档为准）。
+M5 RC 门禁见 [docs/m5-readiness.md](docs/m5-readiness.md)，双端 QA 见 [docs/m5-qa.md](docs/m5-qa.md)。
+IPC 契约见 [docs/api-contract.md](docs/api-contract.md)。
 
 ## 技术栈
 
@@ -24,8 +26,11 @@ pnpm install            # 首次（pnpm 工作区）
 pnpm dev                # tauri dev（自动起 vite + 编译 + 启动 App）
 pnpm ui:typecheck       # vue-tsc
 pnpm test               # vitest + cargo test（cargo test 会重新导出 bindings.ts）
-pnpm build              # 生产构建（tauri build）
+pnpm check:versions     # 对齐 package / Cargo / tauri 版本与 identifier
+pnpm build              # 生产构建（tauri build；macOS ad-hoc 签名）
 ```
+
+CI：`.github/workflows/ci.yml`。内部 RC 包：`.github/workflows/rc-build.yml`（手动或 `v0.5.0-rc.*` tag）。正式签名发布：`.github/workflows/release.yml`（M5.1，需 `release` Environment 的 Apple 证书；Windows 签名与 `JITI_SENTRY_DSN` 可选且不与 Apple 凭据耦合）。
 
 开发自检钩子（debug 构建，`services/dev.rs`）：
 

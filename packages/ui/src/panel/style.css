@@ -12,6 +12,7 @@
   --j-muted: #5c6773;
   --j-faint: #98a1ab;
   --j-border: rgba(28, 33, 40, 0.1);
+  --j-border-strong: rgba(28, 33, 40, 0.16);
   --j-input-bg: rgba(255, 255, 255, 0.72);
   --j-hover: rgba(28, 33, 40, 0.055);
   --j-active: rgba(28, 33, 40, 0.09);
@@ -37,6 +38,7 @@
     --j-muted: #8a94a0;
     --j-faint: #59636f;
     --j-border: rgba(230, 235, 241, 0.12);
+    --j-border-strong: rgba(230, 235, 241, 0.2);
     --j-input-bg: rgba(255, 255, 255, 0.06);
     --j-hover: rgba(230, 235, 241, 0.07);
     --j-active: rgba(230, 235, 241, 0.12);
@@ -58,6 +60,7 @@
   --j-muted: #8a94a0;
   --j-faint: #59636f;
   --j-border: rgba(230, 235, 241, 0.12);
+  --j-border-strong: rgba(230, 235, 241, 0.2);
   --j-input-bg: rgba(255, 255, 255, 0.06);
   --j-hover: rgba(230, 235, 241, 0.07);
   --j-active: rgba(230, 235, 241, 0.12);
@@ -271,6 +274,16 @@ select {
   cursor: default; /* §8.4：可点击元素不动指针 */
   appearance: none;
   -webkit-appearance: none;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="search"],
+textarea,
+.search,
+.text-input,
+.key-row input {
+  cursor: text;
 }
 
 input {
@@ -514,14 +527,11 @@ input {
   overscroll-behavior: contain;
 }
 
-.history-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 10px 11px;
-  background: var(--j-input-bg);
-  border: 1px solid var(--j-border);
-  border-radius: 8px;
+.history-row:focus-visible,
+.mistake-list > li:focus-visible,
+.mistake-list:focus-visible {
+  outline: 2px solid var(--j-focus-ring);
+  outline-offset: -2px;
 }
 
 .history-input {
@@ -747,78 +757,7 @@ input {
   }
 }
 
-/* ── V2：沉浸式平面面板 ───────────────────────────────────────
-   以输入为主入口，采用克制蓝色强调与分隔线组织层级，避免卡片堆叠。
-   保留所有原生窗口、键盘与可访问性约定。 */
-:root {
-  --j-bg: rgb(246 248 252 / 0.94);
-  --j-surface: rgb(255 255 255 / 0.68);
-  --j-fg: #162033;
-  --j-muted: #647086;
-  --j-faint: #98a2b3;
-  --j-border: rgb(22 32 51 / 0.09);
-  --j-border-strong: rgb(22 32 51 / 0.15);
-  --j-input-bg: rgb(255 255 255 / 0.82);
-  --j-hover: rgb(22 32 51 / 0.05);
-  --j-active: rgb(22 32 51 / 0.09);
-  --j-accent: #2764db;
-  --j-accent-ink: #ffffff;
-  --j-tab-on: rgb(39 100 219 / 0.1);
-  --j-focus-ring: rgb(39 100 219 / 0.38);
-  --j-dot: #148561;
-  --j-danger: #c84949;
-  --j-warning: #b46b12;
-  color-scheme: light;
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --j-bg: rgb(15 21 31 / 0.96);
-    --j-surface: rgb(28 37 52 / 0.66);
-    --j-fg: #eef3fb;
-    --j-muted: #a6b1c2;
-    --j-faint: #728096;
-    --j-border: rgb(226 235 249 / 0.09);
-    --j-border-strong: rgb(226 235 249 / 0.16);
-    --j-input-bg: rgb(255 255 255 / 0.065);
-    --j-hover: rgb(226 235 249 / 0.075);
-    --j-active: rgb(226 235 249 / 0.12);
-    --j-accent: #78a4ff;
-    --j-accent-ink: #0c1730;
-    --j-tab-on: rgb(120 164 255 / 0.13);
-    --j-focus-ring: rgb(120 164 255 / 0.44);
-    --j-dot: #45c496;
-    --j-danger: #f07676;
-    --j-warning: #efad55;
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --j-bg: rgb(15 21 31 / 0.96);
-  --j-surface: rgb(28 37 52 / 0.66);
-  --j-fg: #eef3fb;
-  --j-muted: #a6b1c2;
-  --j-faint: #728096;
-  --j-border: rgb(226 235 249 / 0.09);
-  --j-border-strong: rgb(226 235 249 / 0.16);
-  --j-input-bg: rgb(255 255 255 / 0.065);
-  --j-hover: rgb(226 235 249 / 0.075);
-  --j-active: rgb(226 235 249 / 0.12);
-  --j-accent: #78a4ff;
-  --j-accent-ink: #0c1730;
-  --j-tab-on: rgb(120 164 255 / 0.13);
-  --j-focus-ring: rgb(120 164 255 / 0.44);
-  --j-dot: #45c496;
-  --j-danger: #f07676;
-  --j-warning: #efad55;
-  color-scheme: dark;
-}
-
+/* ── 布局细化：保留筛选/工具栏结构，强调色仍用 §8.2 amber，不覆盖为蓝色 ── */
 html,
 body {
   font-size: 13px;
@@ -921,8 +860,6 @@ body {
 
 .content {
   background: transparent;
-  scrollbar-color: var(--j-border-strong) transparent;
-  scrollbar-width: thin;
 }
 
 .translate-view,

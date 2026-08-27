@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
 
-use crate::providers::{
-    ProvidersConfig, ProvidersSnapshot, config_for, provider_label, snapshot,
-};
+use crate::providers::{config_for, provider_label, snapshot, ProvidersConfig, ProvidersSnapshot};
 use crate::services::secrets;
 use crate::services::settings;
 use crate::services::transport;
@@ -51,10 +49,7 @@ pub fn provider_save_api_key(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn provider_test(
-    app: AppHandle,
-    provider: String,
-) -> Result<TestProviderResult, String> {
+pub async fn provider_test(app: AppHandle, provider: String) -> Result<TestProviderResult, String> {
     let config = match settings::load_provider_config(&app) {
         Ok(config) => config,
         Err(e) => return Ok(test_fail(e)),

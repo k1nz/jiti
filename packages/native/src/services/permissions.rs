@@ -67,7 +67,10 @@ pub fn items(ax_trusted: bool) -> Vec<PermissionItem> {
 }
 
 pub fn snapshot_from(items: Vec<PermissionItem>, onboarding_seen: bool) -> PermissionsSnapshot {
-    let all_required_granted = items.iter().filter(|item| item.required).all(|item| item.granted);
+    let all_required_granted = items
+        .iter()
+        .filter(|item| item.required)
+        .all(|item| item.granted);
     PermissionsSnapshot {
         platform: platform().into(),
         items,
@@ -124,11 +127,14 @@ pub fn open_accessibility_settings() -> Result<bool, String> {
 fn prompt_accessibility() {
     #[cfg(target_os = "macos")]
     {
-        use objc2_application_services::{kAXTrustedCheckOptionPrompt, AXIsProcessTrustedWithOptions};
+        use objc2_application_services::{
+            kAXTrustedCheckOptionPrompt, AXIsProcessTrustedWithOptions,
+        };
         use objc2_core_foundation::{CFBoolean, CFDictionary, CFString};
 
         let prompt = unsafe { kAXTrustedCheckOptionPrompt };
-        let dict = CFDictionary::<CFString, CFBoolean>::from_slices(&[prompt], &[CFBoolean::new(true)]);
+        let dict =
+            CFDictionary::<CFString, CFBoolean>::from_slices(&[prompt], &[CFBoolean::new(true)]);
         let _ = unsafe { AXIsProcessTrustedWithOptions(Some(dict.as_ref())) };
     }
 }

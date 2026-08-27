@@ -1,11 +1,17 @@
 //! 语法检查命令：输入校验、Channel 转发、耗时、历史与错题收录。
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
-use crate::providers::grammar::{run_grammar, GrammarProgressEvent, GrammarRequest, GrammarResult};
+use crate::providers::grammar::{
+    begin_grammar_job, grammar_job_is_current, run_grammar, GrammarProgressEvent, GrammarRequest,
+    GrammarResult,
+};
 use crate::providers::EngineErrorPayload;
 use crate::services::database;
 use crate::services::history::{self, NewHistoryEntry};
@@ -27,11 +33,28 @@ pub async fn grammar_check(
     request: GrammarRequest,
     on_progress: Channel<GrammarProgressEvent>,
 ) -> Result<GrammarCheckOutcome, EngineErrorPayload> {
-    let mut emit = |event: GrammarProgressEvent| {
-        let _ = on_progress.send(event);
+    let job = begin_grammar_job();
+    let channel_closed = Arc::new(AtomicBool::new(false));
+    let alive = {
+        let channel_closed = channel_closed.clone();
+        move || grammar_job_is_current(job) && !channel_closed.load(Ordering::SeqCst)
     };
-    match run_grammar(&app, request, &mut emit).await {
+    let mut emit = |event: GrammarProgressEvent| {
+        if !grammar_job_is_current(job) || channel_closed.load(Ordering::SeqCst) {
+            return;
+        }
+        if on_progress.send(event).is_err() {
+            channel_closed.store(true, Ordering::SeqCst);
+        }
+    };
+    match run_grammar(&app, request, &mut emit, &alive).await {
         Ok(result) => {
+            if !alive() {
+                return Err(crate::providers::EngineError::Cancelled {
+                    provider: "grammar".into(),
+                }
+                .payload());
+            }
             let should_write = settings::load_provider_config(&app)
                 .map(|c| c.write_history)
                 .unwrap_or(true);
@@ -52,6 +75,12 @@ pub async fn grammar_check(
                     },
                 );
             }
+            if !alive() {
+                return Err(crate::providers::EngineError::Cancelled {
+                    provider: "grammar".into(),
+                }
+                .payload());
+            }
             let prefs = settings::load_mistake_preferences(&app).unwrap_or_default();
             let mistake_ids = match database::open(&app) {
                 Ok(mut conn) => mistakes::collect_from_grammar(&mut conn, &result, &prefs)
@@ -70,6 +99,12 @@ pub async fn grammar_check(
                     .payload());
                 }
             };
+            if !alive() {
+                return Err(crate::providers::EngineError::Cancelled {
+                    provider: "grammar".into(),
+                }
+                .payload());
+            }
             Ok(GrammarCheckOutcome {
                 result,
                 mistake_ids,

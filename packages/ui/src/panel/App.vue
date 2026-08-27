@@ -46,6 +46,10 @@ import {
   type SourceChoice,
 } from '../language';
 import { isRecordingHotkey, shouldHidePanelOnEscape } from '../hotkeys';
+import { hasOpenOverlay } from '../overlays';
+import { isHidePanelShortcut, modeCycleDirection } from '../panelKeys';
+import { TypeaheadBuffer, typeaheadIndex } from '../typeahead';
+import { isCancelledEngineError } from '../loading';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 import { useGrammarStore } from '../stores/grammar';
@@ -72,6 +76,8 @@ const TABS: ReadonlyArray<{ key: PanelMode; icon: Component }> = [
 const source = ref<SourceChoice>('auto');
 const target = ref<LangCode>('zh');
 const translateStatus = ref<'idle' | 'loading' | 'done' | 'error'>('idle');
+const translateSpinner = ref(false);
+let translateSpinnerTimer: ReturnType<typeof setTimeout> | undefined;
 const translateResult = ref<TranslateResult | null>(null);
 const translateError = ref<EngineErrorPayload | null>(null);
 const history = ref<HistoryEntry[]>([]);
@@ -86,6 +92,8 @@ const composing = ref(false);
 const lastCommitted = ref('');
 let applyingCapture = false;
 const pointerDown = { x: 0, y: 0 };
+const historyTypeahead = new TypeaheadBuffer();
+const historyFocus = ref(0);
 
 let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
@@ -116,12 +124,21 @@ function onShellClick(e: MouseEvent) {
   searchEl.value?.focus();
 }
 
+function armTranslateSpinner() {
+  translateSpinner.value = false;
+  if (translateSpinnerTimer !== undefined) clearTimeout(translateSpinnerTimer);
+  translateSpinnerTimer = setTimeout(() => {
+    if (translateStatus.value === 'loading') translateSpinner.value = true;
+  }, 200);
+}
+
 async function runTranslate(text = store.input) {
   const input = text.trim();
   if (!input) return;
   translateStatus.value = 'loading';
   translateError.value = null;
   translateResult.value = null;
+  armTranslateSpinner();
   const request: TranslateRequest_Deserialize = {
     text: input,
     from: resolveSource(source.value, input),
@@ -131,10 +148,12 @@ async function runTranslate(text = store.input) {
     const result = await unwrap(commands.translate(request));
     translateResult.value = result;
     translateStatus.value = 'done';
+    translateSpinner.value = false;
     await reloadHistory();
   } catch (err) {
     translateError.value = err as EngineErrorPayload;
     translateStatus.value = 'error';
+    translateSpinner.value = false;
   }
 }
 
@@ -144,12 +163,17 @@ async function runGrammar(text = store.input) {
   const id = grammar.begin();
   const onProgress = new Channel<GrammarProgressEvent_Deserialize>();
   onProgress.onmessage = (event) => grammar.applyProgress(id, event);
-  const request: GrammarRequest_Deserialize = { text: input, engine: 'llm' };
+  const request: GrammarRequest_Deserialize = {
+    text: input,
+    engine: 'llm',
+    requestId: String(id),
+  };
   try {
     const outcome = await unwrap(commands.grammarCheck(request, onProgress));
     grammar.finish(id, outcome);
     await reloadHistory();
   } catch (err) {
+    if (isCancelledEngineError(err)) return;
     grammar.fail(id, err as EngineErrorPayload);
   }
 }
@@ -342,6 +366,15 @@ const placeholder = computed(() => {
   return t(`tabs.${store.activeMode}`);
 });
 
+function onHistoryKeydown(e: KeyboardEvent) {
+  if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+  const labels = history.value.map((entry) => entry.input);
+  const q = historyTypeahead.push(e.key);
+  historyFocus.value = typeaheadIndex(labels, q, historyFocus.value);
+  const row = document.querySelector(`[data-history-index="${historyFocus.value}"]`);
+  if (row instanceof HTMLElement) row.focus();
+}
+
 async function togglePin() {
   const next = !store.pinned;
   try {
@@ -358,7 +391,12 @@ async function onKeydown(e: KeyboardEvent) {
   }
   if (!shouldHandlePanelShortcut(e)) return;
   if (e.key === 'Escape') {
-    if (!shouldHidePanelOnEscape()) return;
+    if (!shouldHidePanelOnEscape(hasOpenOverlay())) return;
+    e.preventDefault();
+    await commands.hidePopup();
+    return;
+  }
+  if (isHidePanelShortcut(e)) {
     e.preventDefault();
     await commands.hidePopup();
     return;
@@ -369,10 +407,10 @@ async function onKeydown(e: KeyboardEvent) {
     await openSettings();
     return;
   }
-  if (e.key === 'Tab') {
+  const cycle = modeCycleDirection(e);
+  if (cycle !== 0) {
     e.preventDefault();
-    store.cycleMode(e.shiftKey ? -1 : 1);
-    searchEl.value?.focus();
+    store.cycleMode(cycle);
     return;
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
@@ -564,7 +602,7 @@ watch(
           <span v-if="copyLabel" class="copy-label">{{ copyLabel }}</span>
         </div>
 
-        <div v-if="translateStatus === 'loading'" class="state-box" aria-live="polite">
+        <div v-if="translateSpinner && translateStatus === 'loading'" class="state-box" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
           <span>{{ t('translate.loading') }}</span>
         </div>
@@ -615,8 +653,15 @@ watch(
           <IconHistory :size="26" :stroke-width="1.5" />
           <span>{{ t('history.empty') }}</span>
         </div>
-        <ul v-else class="history-list">
-          <li v-for="entry in history" :key="entry.id" class="history-row" data-tauri-drag-region="false">
+        <ul v-else class="history-list" tabindex="0" @keydown="onHistoryKeydown">
+          <li
+            v-for="(entry, index) in history"
+            :key="entry.id"
+            class="history-row"
+            data-tauri-drag-region="false"
+            :data-history-index="index"
+            tabindex="-1"
+          >
             <div class="history-input">{{ entry.input }}</div>
             <div class="history-output">{{ entry.output }}</div>
             <div class="meta">
@@ -644,7 +689,7 @@ watch(
         {{ permissionWarning }}
       </button>
       <span class="spacer"></span>
-      <span class="status-item mono">{{ t('footer.escTab') }}</span>
+      <span class="status-item mono">{{ t('footer.escKeys') }}</span>
       <button
         class="icon-btn"
         type="button"

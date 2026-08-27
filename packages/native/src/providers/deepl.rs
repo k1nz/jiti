@@ -6,9 +6,7 @@ use serde_json::json;
 
 use crate::services::transport::Transport;
 
-use super::{
-    EngineError, ProviderConfig, TranslateRequest, TranslateResult, lang, provider_label,
-};
+use super::{lang, provider_label, EngineError, ProviderConfig, TranslateRequest, TranslateResult};
 
 #[derive(Debug, Deserialize)]
 struct DeepLResponse {
@@ -64,15 +62,19 @@ pub async fn translate(
     let body = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {
         let detail = truncate(&body, 300);
-        return Err(EngineError::from_http(&provider, status, &detail, retry_after));
+        return Err(EngineError::from_http(
+            &provider,
+            status,
+            &detail,
+            retry_after,
+        ));
     }
 
-    let parsed: DeepLResponse = serde_json::from_str(&body).map_err(|e| {
-        EngineError::InvalidResponse {
+    let parsed: DeepLResponse =
+        serde_json::from_str(&body).map_err(|e| EngineError::InvalidResponse {
             provider: provider.into(),
             detail: e.to_string(),
-        }
-    })?;
+        })?;
     let Some(t) = parsed.translations.into_iter().next() else {
         return Err(EngineError::InvalidResponse {
             provider: provider.into(),
@@ -203,7 +205,9 @@ mod tests {
             .mock("POST", "/v2/translate")
             .match_header("authorization", "DeepL-Auth-Key test-key")
             .with_status(200)
-            .with_body(r#"{"translations":[{"detected_source_language":"EN","text":"你好，世界"}]}"#)
+            .with_body(
+                r#"{"translations":[{"detected_source_language":"EN","text":"你好，世界"}]}"#,
+            )
             .create();
         let out = tauri::async_runtime::block_on(async {
             let req = TranslateRequest {

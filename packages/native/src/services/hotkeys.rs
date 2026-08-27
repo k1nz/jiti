@@ -206,7 +206,11 @@ fn key_label(code: Code) -> String {
     }
 }
 
-fn assigned_to(config: &HotkeysConfig, shortcut: &Shortcut, except: Option<HotkeyId>) -> Option<HotkeyId> {
+fn assigned_to(
+    config: &HotkeysConfig,
+    shortcut: &Shortcut,
+    except: Option<HotkeyId>,
+) -> Option<HotkeyId> {
     for id in HotkeyId::all() {
         if Some(id) == except {
             continue;
@@ -336,14 +340,15 @@ pub fn snapshot(app: &AppHandle) -> HotkeysSnapshot {
     }
 }
 
-pub fn set_binding(app: &AppHandle, id: HotkeyId, accelerator: &str) -> Result<HotkeysSnapshot, String> {
+pub fn set_binding(
+    app: &AppHandle,
+    id: HotkeyId,
+    accelerator: &str,
+) -> Result<HotkeysSnapshot, String> {
     let new = parse_accelerator(accelerator)?;
     let mut config = load(app);
     if let Some(owner) = assigned_to(&config, &new, Some(id)) {
-        return Err(format!(
-            "该快捷键已被「{}」占用",
-            owner.title()
-        ));
+        return Err(format!("该快捷键已被「{}」占用", owner.title()));
     }
 
     let previous = config.clone();
@@ -434,7 +439,10 @@ mod tests {
             assigned_to(&config, &shortcut, Some(HotkeyId::Translate)),
             Some(HotkeyId::Grammar)
         );
-        assert_eq!(assigned_to(&config, &shortcut, Some(HotkeyId::Grammar)), None);
+        assert_eq!(
+            assigned_to(&config, &shortcut, Some(HotkeyId::Grammar)),
+            None
+        );
     }
 
     #[test]

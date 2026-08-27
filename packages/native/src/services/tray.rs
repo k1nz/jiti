@@ -3,7 +3,7 @@
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{App, AppHandle, Manager as _};
+use tauri::{App, AppHandle};
 
 use super::panel::Mode;
 use super::prefs::{self, UiLocale};

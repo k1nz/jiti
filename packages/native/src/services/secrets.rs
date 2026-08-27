@@ -22,8 +22,7 @@ fn extract_key(value: Option<Value>) -> Option<String> {
 
 pub fn get_api_key(app: &AppHandle, provider: &str) -> Result<String, String> {
     let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
-    extract_key(store.get(entry_name(provider)))
-        .ok_or_else(|| format!("未配置 {provider} API Key"))
+    extract_key(store.get(entry_name(provider))).ok_or_else(|| format!("未配置 {provider} API Key"))
 }
 
 pub fn has_api_key(app: &AppHandle, provider: &str) -> bool {
@@ -53,6 +52,9 @@ mod tests {
         assert!(extract_key(None).is_none());
         assert!(extract_key(Some(json!(""))).is_none());
         assert!(extract_key(Some(json!("   "))).is_none());
-        assert_eq!(extract_key(Some(json!("sk-abc"))).as_deref(), Some("sk-abc"));
+        assert_eq!(
+            extract_key(Some(json!("sk-abc"))).as_deref(),
+            Some("sk-abc")
+        );
     }
 }

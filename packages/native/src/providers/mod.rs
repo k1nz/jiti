@@ -169,8 +169,8 @@ pub async fn run_translate(
     app: &AppHandle,
     request: TranslateRequest,
 ) -> Result<TranslateResult, EngineError> {
-    let config = services::settings::load_provider_config(app)
-        .map_err(|e| EngineError::InvalidConfig {
+    let config =
+        services::settings::load_provider_config(app).map_err(|e| EngineError::InvalidConfig {
             provider: "settings".into(),
             detail: e,
         })?;

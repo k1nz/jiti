@@ -45,6 +45,9 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
         .focused(true)
         .build()
         .map_err(|e| format!("无法打开设置窗口：{e}"))?;
+    if let Some(win) = app.get_webview_window(SETTINGS_LABEL) {
+        crate::services::panel::disable_browser_chrome(&win);
+    }
     Ok(())
 }
 

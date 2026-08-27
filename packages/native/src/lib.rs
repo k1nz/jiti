@@ -18,6 +18,9 @@ use tauri::Manager as _;
 use tauri_plugin_global_shortcut::ShortcutState;
 
 pub fn run() {
+    // M5.1：仅当构建时注入 JITI_SENTRY_DSN 才上报。guard 必须活过 app.run。
+    let _crash_guard = services::crash::init();
+
     let specta = {
         let b = ipc::generate();
         #[cfg(debug_assertions)]
@@ -60,6 +63,7 @@ pub fn run() {
                 // 预热态：alpha=0 + 前置 + 忽略鼠标 + JS 空转 rAF（§4.6 A.1）。
                 // macOS 13 无 windowOcclusionDetectionEnabled 私有键，见 services/panel.rs 决策说明。
                 services::panel::prewarm(&win);
+                services::panel::disable_browser_chrome(&win);
             }
 
             #[cfg(debug_assertions)]
@@ -67,13 +71,15 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if window.label() != "main" {
-                return;
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
+                api.prevent_close();
+                services::panel::hide_panel(window.app_handle());
             }
-            if let tauri::WindowEvent::Focused(focused) = event {
+            tauri::WindowEvent::Focused(focused) if window.label() == "main" => {
                 services::panel::on_focus_changed(window.app_handle(), *focused);
             }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building jiti tauri application");

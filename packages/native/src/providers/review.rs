@@ -135,10 +135,11 @@ pub async fn review_with_timeout(
             retry_after,
         ));
     }
-    let parsed: ChatResponse = serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
-        provider: provider.into(),
-        detail: e.to_string(),
-    })?;
+    let parsed: ChatResponse =
+        serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
+            provider: provider.into(),
+            detail: e.to_string(),
+        })?;
     let content = parsed
         .choices
         .into_iter()
@@ -150,10 +151,11 @@ pub async fn review_with_timeout(
             provider: provider.into(),
             detail: "choices[0].message.content 为空".into(),
         })?;
-    let review: ReviewJson = serde_json::from_str(&content).map_err(|e| EngineError::InvalidResponse {
-        provider: provider.into(),
-        detail: format!("复习 JSON 无法解析：{e}"),
-    })?;
+    let review: ReviewJson =
+        serde_json::from_str(&content).map_err(|e| EngineError::InvalidResponse {
+            provider: provider.into(),
+            detail: format!("复习 JSON 无法解析：{e}"),
+        })?;
     let summary = review.summary.trim().to_string();
     if summary.is_empty() {
         return Err(EngineError::InvalidResponse {

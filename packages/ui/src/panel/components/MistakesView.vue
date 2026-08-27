@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   IconAlertCircle,
@@ -17,6 +17,8 @@ import type {
 } from "../../ipc/bindings";
 import { unwrap } from "../../ipc/unwrap";
 import { renderReviewMarkdown } from "../../markdown";
+import { popOverlay, pushOverlay } from "../../overlays";
+import { TypeaheadBuffer, typeaheadIndex } from "../../typeahead";
 import { useMistakesStore } from "../../stores/mistakes";
 import MistakeCard from "./MistakeCard.vue";
 
@@ -48,6 +50,8 @@ const { t } = useI18n();
 const mistakes = useMistakesStore();
 const filterOpen = ref(false);
 const filterRoot = ref<HTMLElement | null>(null);
+const listFocus = ref(0);
+const listTypeahead = new TypeaheadBuffer();
 
 const filterActive = computed(() => {
   const f = mistakes.filter;
@@ -76,9 +80,24 @@ function onDocPointerDown(ev: PointerEvent) {
 function onDocKeydown(ev: KeyboardEvent) {
   if (ev.key !== "Escape" || !filterOpen.value) return;
   ev.preventDefault();
+  ev.stopPropagation();
   ev.stopImmediatePropagation();
   closeFilter();
 }
+
+function onListKeydown(ev: KeyboardEvent) {
+  if (ev.key.length !== 1 || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const labels = mistakes.items.map((item) => item.fragment || item.sourceText);
+  const q = listTypeahead.push(ev.key);
+  listFocus.value = typeaheadIndex(labels, q, listFocus.value);
+  const row = document.querySelector(`[data-mistake-index="${listFocus.value}"]`);
+  if (row instanceof HTMLElement) row.focus();
+}
+
+watch(filterOpen, (open, was) => {
+  if (open && !was) pushOverlay();
+  if (!open && was) popOverlay();
+});
 
 function currentFilter(): MistakeFilter {
   return { ...mistakes.filter };
@@ -178,6 +197,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDocPointerDown, true);
   window.removeEventListener("keydown", onDocKeydown, true);
+  if (filterOpen.value) popOverlay();
 });
 </script>
 
@@ -362,8 +382,13 @@ onBeforeUnmount(() => {
         <IconNotebook :size="26" :stroke-width="1.5" />
         <span>{{ t("mistakes.empty") }}</span>
       </div>
-      <ul v-else class="mistake-list">
-        <li v-for="item in mistakes.items" :key="item.id">
+      <ul v-else class="mistake-list" tabindex="0" @keydown="onListKeydown">
+        <li
+          v-for="(item, index) in mistakes.items"
+          :key="item.id"
+          :data-mistake-index="index"
+          tabindex="-1"
+        >
           <MistakeCard
             :source-text="item.sourceText"
             :fragment="item.fragment"

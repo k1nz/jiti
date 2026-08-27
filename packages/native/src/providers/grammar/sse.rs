@@ -46,10 +46,23 @@ fn map_sse_error(err: EventStreamError<reqwest::Error>) -> EngineError {
     }
 }
 
-/// 从 OpenAI 兼容 SSE 流中抽出文本增量。`[DONE]` 结束。
+/// 与 [`fold_openai_sse_until`] 相同，但从不主动取消。
+#[allow(dead_code)]
 pub async fn fold_openai_sse<S>(
     byte_stream: S,
+    on_delta: impl FnMut(&str),
+) -> Result<String, EngineError>
+where
+    S: Stream<Item = Result<Bytes, reqwest::Error>> + Unpin,
+{
+    fold_openai_sse_until(byte_stream, on_delta, || false).await
+}
+
+/// 与 [`fold_openai_sse`] 相同，但 `should_stop` 为真时中止并返回 `Cancelled`。
+pub async fn fold_openai_sse_until<S>(
+    byte_stream: S,
     mut on_delta: impl FnMut(&str),
+    mut should_stop: impl FnMut() -> bool,
 ) -> Result<String, EngineError>
 where
     S: Stream<Item = Result<Bytes, reqwest::Error>> + Unpin,
@@ -57,6 +70,11 @@ where
     let mut events = byte_stream.eventsource();
     let mut assembled = String::new();
     while let Some(item) = events.next().await {
+        if should_stop() {
+            return Err(EngineError::Cancelled {
+                provider: "LLM".into(),
+            });
+        }
         let Event { data, .. } = item.map_err(map_sse_error)?;
         if data.trim() == "[DONE]" {
             break;
@@ -128,10 +146,7 @@ mod tests {
         let first = a.push("```json\n{\"type\":\"overall\",\"text\":\"ok\"}\n{\"type\":");
         assert_eq!(first, vec![r#"{"type":"overall","text":"ok"}"#]);
         let second = a.push("\"correctedText\",\"text\":\"Hi.\"}\n```\n");
-        assert_eq!(
-            second,
-            vec![r#"{"type":"correctedText","text":"Hi."}"#]
-        );
+        assert_eq!(second, vec![r#"{"type":"correctedText","text":"Hi."}"#]);
         assert!(a.finish().is_empty());
     }
 
@@ -142,10 +157,7 @@ mod tests {
             extract_delta_content(r#"{"choices":[{"delta":{"content":"He "}}]}"#).as_deref(),
             Some("He ")
         );
-        assert_eq!(
-            extract_delta_content(r#"{"choices":[{"delta":{}}]}"#),
-            None
-        );
+        assert_eq!(extract_delta_content(r#"{"choices":[{"delta":{}}]}"#), None);
     }
 
     #[test]
@@ -178,5 +190,17 @@ mod tests {
             });
             assert_eq!(assembled, payload, "split at {split}");
         }
+    }
+
+    #[test]
+    fn sse_stop_flag_cancels_without_finishing() {
+        let json = r#"{"choices":[{"delta":{"content":"He "}}]}"#;
+        let frame = format!("data: {json}\n\ndata: {json}\n\ndata: [DONE]\n\n");
+        let bytes = Bytes::copy_from_slice(frame.as_bytes());
+        let out = tauri::async_runtime::block_on(async {
+            let chunks = stream::iter(vec![Ok::<Bytes, reqwest::Error>(bytes)]);
+            fold_openai_sse_until(chunks, |_| {}, || true).await
+        });
+        assert!(matches!(out, Err(EngineError::Cancelled { .. })));
     }
 }

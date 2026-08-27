@@ -153,7 +153,10 @@ pub fn update(app: &AppHandle, patch: PreferencesPatch) -> Result<PreferencesSna
     save_prefs(app, prefs)?;
     let snap = snapshot(app);
     tray::refresh_labels(app, prefs.locale);
-    let _ = PreferencesChangedEvent { snapshot: snap.clone() }.emit(app);
+    let _ = PreferencesChangedEvent {
+        snapshot: snap.clone(),
+    }
+    .emit(app);
     Ok(snap)
 }
 

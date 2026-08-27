@@ -4,9 +4,7 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::providers::review::{history_from_review, review, AiReviewResult};
-use crate::providers::{
-    config_for, provider_label, EngineError, EngineErrorPayload, PROVIDER_LLM,
-};
+use crate::providers::{config_for, provider_label, EngineError, EngineErrorPayload, PROVIDER_LLM};
 use crate::services::database;
 use crate::services::history;
 use crate::services::mistakes::{

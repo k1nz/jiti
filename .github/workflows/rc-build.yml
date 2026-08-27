@@ -1,0 +1,77 @@
+name: RC Build
+
+# Internal unsigned / ad-hoc packages. Does not create a public GitHub Release.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v0.5.0-rc.*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-latest
+            args: --target aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+          - name: macos-x64
+            os: macos-latest
+            args: --target x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+          - name: windows-x64
+            os: windows-latest
+            args: --target x86_64-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:versions
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: packages/native
+          args: ${{ matrix.args }}
+          includeUpdaterJson: false
+      - name: SHA-256
+        shell: bash
+        run: |
+          mkdir -p checksums
+          {
+            find packages/native/target -type f \( \
+              -name '*.dmg' -o -name '*.app' -o -name '*.msi' -o -name '*.exe' \
+            \) 2>/dev/null
+            find src-tauri/target -type f \( \
+              -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \
+            \) 2>/dev/null
+          } | sort -u | while read -r f; do
+            if command -v shasum >/dev/null; then
+              shasum -a 256 "$f"
+            else
+              sha256sum "$f"
+            fi
+          done | tee checksums/${{ matrix.name }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jiti-0.5.0-rc.1-${{ matrix.name }}
+          path: |
+            packages/native/target/**/bundle/**
+            checksums/**
+          if-no-files-found: warn
+          retention-days: 14

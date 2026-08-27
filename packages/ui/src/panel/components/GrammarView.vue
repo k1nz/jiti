@@ -73,7 +73,7 @@ async function uncollect(index: number) {
 
 const busy = computed(() => grammar.status === 'loading' || grammar.status === 'streaming');
 const canCheck = computed(() => props.input.trim().length > 0 && !busy.value);
-const showSpinner = computed(() => busy.value && !grammar.hasContent);
+const showSpinner = computed(() => grammar.spinnerVisible && !grammar.hasContent);
 const showResults = computed(
   () => grammar.hasContent || grammar.status === 'done' || grammar.status === 'streaming',
 );

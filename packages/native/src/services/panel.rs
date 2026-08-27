@@ -237,8 +237,43 @@ pub fn prewarm(win: &WebviewWindow) {
 fn position_near_cursor(win: &WebviewWindow) {
     #[cfg(target_os = "macos")]
     macos::position_near_cursor(win);
-    #[cfg(not(target_os = "macos"))]
-    let _ = win; // TODO(M1): Windows 光标定位
+    #[cfg(target_os = "windows")]
+    windows::position_near_cursor(win);
+}
+
+/// 光标右下方出现，并夹取到工作区。坐标与窗口系统同原点（左上或已换算）。
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn clamp_panel_position(
+    cursor_x: f64,
+    cursor_y: f64,
+    panel_w: f64,
+    panel_h: f64,
+    work_x: f64,
+    work_y: f64,
+    work_w: f64,
+    work_h: f64,
+    offset: f64,
+    margin: f64,
+) -> (f64, f64) {
+    let x_raw = cursor_x + offset;
+    let y_raw = cursor_y + offset;
+    let x_max = (work_x + work_w - panel_w - margin).max(work_x + margin);
+    let y_max = (work_y + work_h - panel_h - margin).max(work_y + margin);
+    (
+        x_raw.clamp(work_x + margin, x_max),
+        y_raw.clamp(work_y + margin, y_max),
+    )
+}
+
+/// 去掉 WebView 浏览器右键菜单 / 链接预览 / 字典查询。
+pub fn disable_browser_chrome(win: &WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    macos::disable_browser_chrome(win);
+    #[cfg(target_os = "windows")]
+    windows::disable_browser_chrome(win);
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let _ = win;
 }
 
 fn reveal(win: &WebviewWindow) {
@@ -554,6 +589,87 @@ pub mod macos {
 
         let _ = win.set_position(LogicalPosition::new(x, y));
     }
+
+    /// 关掉链接预览 / force-touch 词典；右键菜单由前端 preventDefault 再拦一层。
+    pub fn disable_browser_chrome(win: &WebviewWindow) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let Ok(ns_view) = win.ns_view() else {
+            return;
+        };
+        let Some(webview) = find_wkwebview(ns_view as *mut AnyObject, mtm) else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![webview, setAllowsLinkPreview: false];
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod windows {
+    use tauri::{PhysicalPosition, WebviewWindow};
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    pub fn position_near_cursor(win: &WebviewWindow) {
+        let mut pt = POINT::default();
+        if unsafe { GetCursorPos(&mut pt) }.is_err() {
+            return;
+        }
+        let monitor = unsafe { MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST) };
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+            return;
+        }
+        let work = info.rcWork;
+        let (ww, wh) = win
+            .inner_size()
+            .map(|s| (s.width as f64, s.height as f64))
+            .unwrap_or((640.0, 440.0));
+        let (x, y) = super::clamp_panel_position(
+            pt.x as f64,
+            pt.y as f64,
+            ww,
+            wh,
+            work.left as f64,
+            work.top as f64,
+            (work.right - work.left) as f64,
+            (work.bottom - work.top) as f64,
+            16.0,
+            8.0,
+        );
+        let _ = win.set_position(PhysicalPosition::new(x, y));
+    }
+
+    pub fn disable_browser_chrome(win: &WebviewWindow) {
+        let _ = win.with_webview(|webview| {
+            disable_webview2_chrome(webview);
+        });
+    }
+
+    fn disable_webview2_chrome(webview: tauri::webview::PlatformWebview) {
+        unsafe {
+            let Ok(core) = webview.controller().CoreWebView2() else {
+                return;
+            };
+            let Ok(settings) = core.Settings() else {
+                return;
+            };
+            let _ = settings.SetAreDefaultContextMenusEnabled(false);
+            let _ = settings.SetIsStatusBarEnabled(false);
+            let _ = settings.SetIsZoomControlEnabled(false);
+            #[cfg(not(debug_assertions))]
+            let _ = settings.SetAreDevToolsEnabled(false);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -603,5 +719,19 @@ mod tests {
         assert!(!should_dismiss_on_click_outside(true, true, false));
         assert!(!should_dismiss_on_click_outside(false, false, false));
         assert!(!should_dismiss_on_click_outside(true, false, true));
+    }
+
+    #[test]
+    fn clamp_keeps_panel_inside_work_area() {
+        let (x, y) =
+            clamp_panel_position(0.0, 0.0, 200.0, 100.0, 0.0, 0.0, 1000.0, 800.0, 16.0, 8.0);
+        assert_eq!((x, y), (16.0, 16.0));
+        let (x, y) = clamp_panel_position(
+            980.0, 760.0, 200.0, 100.0, 0.0, 0.0, 1000.0, 800.0, 16.0, 8.0,
+        );
+        assert!(x <= 1000.0 - 200.0 - 8.0);
+        assert!(y <= 800.0 - 100.0 - 8.0);
+        assert!(x >= 8.0);
+        assert!(y >= 8.0);
     }
 }

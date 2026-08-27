@@ -81,9 +81,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 /// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。M4 新增 preferences_* / open_settings 与 preferences://changed。
+/// §3.5 要求的版本化常量：破坏性变更必升。M5 RC 为 grammar requestId / cancelled。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 #[cfg(test)]
 mod tests {

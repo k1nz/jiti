@@ -152,12 +152,16 @@ export type GrammarRequest = GrammarRequest_Serialize | GrammarRequest_Deseriali
 export type GrammarRequest_Deserialize = {
 	text: string,
 	engine?: string | null,
+	/**  前端 runId；新请求会作废仍在飞行的旧检查。 */
+	requestId?: string | null,
 };
 
 /**  语法请求：M2 默认且只允许 `llm`。 */
 export type GrammarRequest_Serialize = {
 	text: string,
 	engine?: string | null,
+	/**  前端 runId；新请求会作废仍在飞行的旧检查。 */
+	requestId?: string | null,
 };
 
 export type GrammarResult = GrammarResult_Serialize | GrammarResult_Deserialize;

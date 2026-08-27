@@ -51,7 +51,8 @@
     "kindReview": "复习"
   },
   "footer": {
-    "escTab": "Esc 隐藏 · Tab 切模式",
+    "escTab": "Esc 隐藏 · ⌘←→ 切模式",
+    "escKeys": "Esc 隐藏 · ⌘←→ 切模式",
     "permissionWarning": "{names}未开启",
     "listJoin": "、"
   },

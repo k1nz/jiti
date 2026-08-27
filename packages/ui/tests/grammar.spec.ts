@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGrammarStore } from '../src/stores/grammar';
 import type { GrammarError, GrammarResult_Serialize } from '../src/ipc/bindings';
 
@@ -127,5 +127,44 @@ describe('grammar store', () => {
     store.finish(id, { result: sampleResult(), mistakeIds: [1] });
     store.applyProgress(id, { kind: 'retrying', reason: '正在重新解析' });
     expect(store.mistakeIds).toEqual([]);
+  });
+
+  it('200ms 内不显示 spinner，超时后才显示', () => {
+    vi.useFakeTimers();
+    const store = useGrammarStore();
+    store.begin();
+    expect(store.spinnerVisible).toBe(false);
+    vi.advanceTimersByTime(199);
+    expect(store.spinnerVisible).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(store.spinnerVisible).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it('首条语义记录到达后立刻关掉 spinner', () => {
+    vi.useFakeTimers();
+    const store = useGrammarStore();
+    const id = store.begin();
+    vi.advanceTimersByTime(200);
+    expect(store.spinnerVisible).toBe(true);
+    store.applyProgress(id, { kind: 'overall', text: '主谓不一致' });
+    expect(store.spinnerVisible).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('新 begin 之后旧 fail 不会污染当前结果', () => {
+    const store = useGrammarStore();
+    const stale = store.begin();
+    const live = store.begin();
+    store.fail(stale, {
+      provider: 'LLM',
+      code: 'cancelled',
+      message: '已取消',
+      hint: null,
+      copyable: 'x',
+    });
+    expect(store.status).toBe('loading');
+    store.finish(live, sampleResult());
+    expect(store.status).toBe('done');
   });
 });

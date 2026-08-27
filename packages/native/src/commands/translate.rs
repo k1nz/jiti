@@ -3,7 +3,7 @@
 use tauri::AppHandle;
 
 use crate::providers::{
-    EngineError, EngineErrorPayload, TranslateRequest, TranslateResult, run_translate,
+    run_translate, EngineError, EngineErrorPayload, TranslateRequest, TranslateResult,
 };
 use crate::services::history::{self, NewHistoryEntry};
 

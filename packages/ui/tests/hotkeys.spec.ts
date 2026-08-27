@@ -52,5 +52,6 @@ describe('acceleratorFromCombo', () => {
     expect(shouldHidePanelOnEscape()).toBe(false);
     isRecordingHotkey.value = false;
     expect(shouldHidePanelOnEscape()).toBe(true);
+    expect(shouldHidePanelOnEscape(true)).toBe(false);
   });
 });

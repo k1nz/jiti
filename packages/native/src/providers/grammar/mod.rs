@@ -6,15 +6,14 @@ pub mod llm;
 mod sse;
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
 
-use crate::providers::{
-    EngineError, ProviderConfig, PROVIDER_LLM, provider_label,
-};
+use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
 use crate::services::{self, transport::Transport};
 
 pub const ENGINE_LLM: &str = "llm";
@@ -30,6 +29,9 @@ pub struct GrammarRequest {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<String>,
+    /// 前端 runId；新请求会作废仍在飞行的旧检查。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -101,7 +103,11 @@ pub struct GrammarDraft {
 }
 
 impl GrammarDraft {
-    pub fn ingest(&mut self, record: NdjsonRecord, input: &str) -> Result<Option<GrammarProgressEvent>, ParseFail> {
+    pub fn ingest(
+        &mut self,
+        record: NdjsonRecord,
+        input: &str,
+    ) -> Result<Option<GrammarProgressEvent>, ParseFail> {
         match record {
             NdjsonRecord::Overall { text } => {
                 self.overall = Some(text.clone());
@@ -254,7 +260,12 @@ pub fn validate_request(request: &GrammarRequest) -> Result<(), EngineError> {
 }
 
 pub fn resolve_engine(request: &GrammarRequest) -> Result<&'static str, EngineError> {
-    match request.engine.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    match request
+        .engine
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         None | Some(ENGINE_LLM) => Ok(ENGINE_LLM),
         Some(ENGINE_LANGUAGETOOL) => Err(EngineError::InvalidConfig {
             provider: "LanguageTool".into(),
@@ -306,6 +317,15 @@ impl LruCache {
 }
 
 static CACHE: LazyLock<Mutex<LruCache>> = LazyLock::new(|| Mutex::new(LruCache::new(CACHE_CAP)));
+static ACTIVE_JOB: AtomicU64 = AtomicU64::new(0);
+
+pub fn begin_grammar_job() -> u64 {
+    ACTIVE_JOB.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+pub fn grammar_job_is_current(id: u64) -> bool {
+    ACTIVE_JOB.load(Ordering::SeqCst) == id
+}
 
 pub fn cache_key(input: &str, model: &str, base_url: &str) -> String {
     format!("{PROMPT_VERSION}\n{model}\n{base_url}\n{input}")
@@ -351,6 +371,7 @@ pub async fn run_grammar(
     app: &AppHandle,
     request: GrammarRequest,
     emit: &mut impl FnMut(GrammarProgressEvent),
+    alive: &impl Fn() -> bool,
 ) -> Result<GrammarResult, EngineError> {
     validate_request(&request)?;
     let engine = resolve_engine(&request)?;
@@ -369,7 +390,7 @@ pub async fn run_grammar(
                 }
             })?;
             let transport = services::transport::shared();
-            check_llm(cfg, key, request.text, &transport, emit).await
+            check_llm(cfg, key, request.text, &transport, emit, alive).await
         }
         ENGINE_LANGUAGETOOL => Err(EngineError::InvalidConfig {
             provider: "LanguageTool".into(),
@@ -388,19 +409,36 @@ pub async fn check_llm(
     text: String,
     transport: &dyn Transport,
     emit: &mut impl FnMut(GrammarProgressEvent),
+    alive: &impl Fn() -> bool,
 ) -> Result<GrammarResult, EngineError> {
     let model = cfg.model.clone().unwrap_or_else(|| "gpt-4o-mini".into());
     let base = cfg.base_url.clone().unwrap_or_default();
     let key = cache_key(&text, &model, &base);
     if let Some(hit) = cache_get(&key) {
+        if !alive() {
+            return Err(EngineError::Cancelled {
+                provider: provider_label(PROVIDER_LLM).into(),
+            });
+        }
         replay_result(&hit, emit);
         return Ok(hit);
     }
 
     let started = std::time::Instant::now();
-    let mut result = llm::check(cfg, &api_key, &text, transport, emit).await?;
+    let mut result = llm::check_until(
+        cfg,
+        &api_key,
+        &text,
+        transport,
+        emit,
+        crate::services::transport::GRAMMAR_TIMEOUT,
+        alive,
+    )
+    .await?;
     result.duration_ms = started.elapsed().as_millis() as u32;
-    cache_put(key, result.clone());
+    if alive() {
+        cache_put(key, result.clone());
+    }
     Ok(result)
 }
 
@@ -430,7 +468,8 @@ mod tests {
             .unwrap();
         draft
             .ingest(
-                parse_ndjson_line(r#"{"type":"correctedText","text":"He goes to school."}"#).unwrap(),
+                parse_ndjson_line(r#"{"type":"correctedText","text":"He goes to school."}"#)
+                    .unwrap(),
                 input,
             )
             .unwrap();
@@ -471,17 +510,20 @@ mod tests {
         assert!(validate_request(&GrammarRequest {
             text: "   ".into(),
             engine: None,
+            request_id: None,
         })
         .is_err());
         let long: String = "a".repeat(MAX_INPUT_CHARS + 1);
         assert!(validate_request(&GrammarRequest {
             text: long,
             engine: None,
+            request_id: None,
         })
         .is_err());
         assert!(validate_request(&GrammarRequest {
             text: "ok".into(),
             engine: None,
+            request_id: None,
         })
         .is_ok());
     }
@@ -491,6 +533,7 @@ mod tests {
         let err = resolve_engine(&GrammarRequest {
             text: "Hello".into(),
             engine: Some("languagetool".into()),
+            request_id: None,
         })
         .unwrap_err();
         assert!(matches!(err, EngineError::InvalidConfig { .. }));
@@ -498,6 +541,7 @@ mod tests {
             resolve_engine(&GrammarRequest {
                 text: "Hello".into(),
                 engine: None,
+                request_id: None,
             })
             .unwrap(),
             ENGINE_LLM
@@ -512,5 +556,14 @@ mod tests {
         assert_ne!(a, b);
         assert_ne!(a, c);
         assert!(a.starts_with(PROMPT_VERSION));
+    }
+
+    #[test]
+    fn newer_job_supersedes_the_previous() {
+        let first = begin_grammar_job();
+        assert!(grammar_job_is_current(first));
+        let second = begin_grammar_job();
+        assert!(!grammar_job_is_current(first));
+        assert!(grammar_job_is_current(second));
     }
 }

@@ -54,6 +54,9 @@ pub enum EngineError {
         provider: String,
         detail: String,
     },
+    Cancelled {
+        provider: String,
+    },
     Upstream {
         provider: String,
         status: u16,
@@ -63,12 +66,7 @@ pub enum EngineError {
 
 impl EngineError {
     /// 统一的 HTTP 错误分类（验收：无 Key / Key 错误 / 限流 / 网络 可区分）。
-    pub fn from_http(
-        provider: &str,
-        status: u16,
-        detail: &str,
-        retry_after: Option<u64>,
-    ) -> Self {
+    pub fn from_http(provider: &str, status: u16, detail: &str, retry_after: Option<u64>) -> Self {
         match status {
             401 | 403 => EngineError::Unauthorized {
                 provider: provider.into(),
@@ -105,6 +103,7 @@ impl EngineError {
             EngineError::InvalidConfig { .. } => "invalid_config",
             EngineError::BadRequest { .. } => "bad_request",
             EngineError::InvalidResponse { .. } => "invalid_response",
+            EngineError::Cancelled { .. } => "cancelled",
             EngineError::Upstream { .. } => "upstream",
         }
     }
@@ -118,6 +117,7 @@ impl EngineError {
             | EngineError::InvalidConfig { provider, .. }
             | EngineError::BadRequest { provider, .. }
             | EngineError::InvalidResponse { provider, .. }
+            | EngineError::Cancelled { provider }
             | EngineError::Upstream { provider, .. } => provider,
         }
     }
@@ -168,6 +168,11 @@ impl EngineError {
                 Some("可能是临时故障，重试一次；仍旧失败则检查 Provider 配置".into()),
                 format!("[jiti] {code}: {provider} {detail}"),
             ),
+            EngineError::Cancelled { provider } => (
+                format!("{provider} 请求已取消"),
+                None,
+                format!("[jiti] {code}: {provider} cancelled"),
+            ),
             EngineError::Upstream {
                 provider,
                 status,
@@ -188,7 +193,11 @@ impl EngineError {
     }
 
     /// 错误经 `engine://error` 事件回传（§3.5 / M1 验收）。
+    /// 被替换/取消的请求不发事件，避免污染当前结果。
     pub fn emit(&self, app: &AppHandle) {
+        if matches!(self, EngineError::Cancelled { .. }) {
+            return;
+        }
         let _ = EngineErrorEvent(self.payload()).emit(app);
     }
 }
@@ -226,6 +235,15 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_is_silent_to_ui_contract() {
+        let err = EngineError::Cancelled {
+            provider: "LLM".into(),
+        };
+        assert_eq!(err.code(), "cancelled");
+        assert_eq!(err.payload().code, "cancelled");
+    }
+
+    #[test]
     fn http_error_classification_covers_acceptance_cases() {
         assert!(matches!(
             EngineError::from_http("DeepL", 403, "forbidden", None),
@@ -233,7 +251,10 @@ mod tests {
         ));
         assert!(matches!(
             EngineError::from_http("LLM", 429, "slow down", Some(5)),
-            EngineError::RateLimited { retry_after: Some(5), .. }
+            EngineError::RateLimited {
+                retry_after: Some(5),
+                ..
+            }
         ));
         assert!(matches!(
             EngineError::from_http("LLM", 503, "down", None),

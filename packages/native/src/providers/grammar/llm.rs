@@ -1,19 +1,21 @@
 //! LLM 语法适配器：NDJSON 流式协议、SSE 解码、结构失败时一次非流式重试。
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::header::RETRY_AFTER;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::sse::{fold_openai_sse, LineAssembler};
+use super::sse::{fold_openai_sse_until, LineAssembler};
 use super::{
     parse_ndjson_line, GrammarDraft, GrammarProgressEvent, GrammarResult, NdjsonError,
     NdjsonRecord, ParseFail,
 };
 use crate::providers::llm::completions_url;
 use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
-use crate::services::transport::{Transport, GRAMMAR_TIMEOUT};
+#[cfg(test)]
+use crate::services::transport::GRAMMAR_TIMEOUT;
+use crate::services::transport::{first_byte_budget, remaining_budget, retry_budget, Transport};
 
 pub const SYSTEM_PROMPT: &str = r#"You are an English grammar checker for Chinese-speaking learners.
 Check ONLY English text. Explain every issue in Simplified Chinese.
@@ -79,6 +81,7 @@ pub fn prompt_version() -> &'static str {
     super::PROMPT_VERSION
 }
 
+#[cfg(test)]
 pub async fn check(
     cfg: &ProviderConfig,
     api_key: &str,
@@ -86,9 +89,19 @@ pub async fn check(
     transport: &dyn Transport,
     emit: &mut impl FnMut(GrammarProgressEvent),
 ) -> Result<GrammarResult, EngineError> {
-    check_with_timeout(cfg, api_key, text, transport, emit, GRAMMAR_TIMEOUT).await
+    check_until(
+        cfg,
+        api_key,
+        text,
+        transport,
+        emit,
+        GRAMMAR_TIMEOUT,
+        &|| true,
+    )
+    .await
 }
 
+#[cfg(test)]
 pub async fn check_with_timeout(
     cfg: &ProviderConfig,
     api_key: &str,
@@ -97,21 +110,57 @@ pub async fn check_with_timeout(
     emit: &mut impl FnMut(GrammarProgressEvent),
     timeout: Duration,
 ) -> Result<GrammarResult, EngineError> {
+    check_until(cfg, api_key, text, transport, emit, timeout, &|| true).await
+}
+
+/// 流式尝试 + 一次严格重试共享同一个总预算；`alive` 为假时停止出网并返回 Cancelled。
+pub async fn check_until(
+    cfg: &ProviderConfig,
+    api_key: &str,
+    text: &str,
+    transport: &dyn Transport,
+    emit: &mut impl FnMut(GrammarProgressEvent),
+    timeout: Duration,
+    alive: &impl Fn() -> bool,
+) -> Result<GrammarResult, EngineError> {
     let provider = provider_label(PROVIDER_LLM);
+    let deadline = crate::services::transport::deadline_from_now(timeout);
+    ensure_alive(alive)?;
     emit(GrammarProgressEvent::Started {
         engine: provider.into(),
     });
 
-    match check_streaming(cfg, api_key, text, transport, emit, timeout).await {
+    match check_streaming(cfg, api_key, text, transport, emit, deadline, alive).await {
         Ok(result) => {
+            ensure_alive(alive)?;
             emit(GrammarProgressEvent::Finished);
             Ok(result)
         }
+        Err(EngineError::Cancelled { .. }) => Err(EngineError::Cancelled {
+            provider: provider.into(),
+        }),
         Err(EngineError::InvalidResponse { .. }) => {
+            let Some(left) = retry_budget(deadline) else {
+                return Err(EngineError::Network {
+                    provider: provider.into(),
+                    detail: "语法检查超过总时限".into(),
+                });
+            };
+            ensure_alive(alive)?;
             emit(GrammarProgressEvent::Retrying {
                 reason: "正在重新解析".into(),
             });
-            let result = check_strict(cfg, api_key, text, transport, emit, timeout).await?;
+            let result = check_strict(
+                cfg,
+                api_key,
+                text,
+                transport,
+                emit,
+                Instant::now() + left,
+                alive,
+            )
+            .await?;
+            ensure_alive(alive)?;
             emit(GrammarProgressEvent::Finished);
             Ok(result)
         }
@@ -125,8 +174,10 @@ async fn check_streaming(
     text: &str,
     transport: &dyn Transport,
     emit: &mut impl FnMut(GrammarProgressEvent),
-    timeout: Duration,
+    deadline: Instant,
+    alive: &impl Fn() -> bool,
 ) -> Result<GrammarResult, EngineError> {
+    ensure_alive(alive)?;
     let (url, auth, model, max_tokens) = request_parts(cfg, api_key)?;
     let body = json!({
         "model": model,
@@ -138,7 +189,7 @@ async fn check_streaming(
         "max_tokens": max_tokens,
         "stream": true,
     });
-    let resp = post(transport, &url, &auth, body, timeout).await?;
+    let resp = post(transport, &url, &auth, body, deadline).await?;
     let status = resp.status().as_u16();
     if !(200..300).contains(&status) {
         return Err(http_error(resp, status).await);
@@ -149,18 +200,39 @@ async fn check_streaming(
     let mut parse_err: Option<EngineError> = None;
     let stream = resp.bytes_stream();
     futures_util::pin_mut!(stream);
-    fold_openai_sse(stream, |delta| {
-        if parse_err.is_some() {
-            return;
-        }
-        for line in assembler.push(delta) {
-            match apply_line(&mut draft, &line, text, emit) {
-                Ok(()) => {}
-                Err(err) => parse_err = Some(err),
+    let left = remaining_budget(deadline);
+    if left.is_zero() {
+        return Err(EngineError::Network {
+            provider: provider_label(PROVIDER_LLM).into(),
+            detail: "语法检查超过总时限".into(),
+        });
+    }
+    let fold = fold_openai_sse_until(
+        stream,
+        |delta| {
+            if parse_err.is_some() || !alive() {
+                return;
             }
+            for line in assembler.push(delta) {
+                match apply_line(&mut draft, &line, text, emit) {
+                    Ok(()) => {}
+                    Err(err) => parse_err = Some(err),
+                }
+            }
+        },
+        || !alive(),
+    );
+    match tokio::time::timeout(left, fold).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => return Err(err),
+        Err(_) => {
+            return Err(EngineError::Network {
+                provider: provider_label(PROVIDER_LLM).into(),
+                detail: "语法检查超过总时限".into(),
+            });
         }
-    })
-    .await?;
+    }
+    ensure_alive(alive)?;
     if let Some(err) = parse_err {
         return Err(err);
     }
@@ -191,8 +263,10 @@ async fn check_strict(
     text: &str,
     transport: &dyn Transport,
     emit: &mut impl FnMut(GrammarProgressEvent),
-    timeout: Duration,
+    deadline: Instant,
+    alive: &impl Fn() -> bool,
 ) -> Result<GrammarResult, EngineError> {
+    ensure_alive(alive)?;
     let (url, auth, model, max_tokens) = request_parts(cfg, api_key)?;
     let body = json!({
         "model": model,
@@ -204,7 +278,8 @@ async fn check_strict(
         "max_tokens": max_tokens,
         "stream": false,
     });
-    let resp = post(transport, &url, &auth, body, timeout).await?;
+    let resp = post(transport, &url, &auth, body, deadline).await?;
+    ensure_alive(alive)?;
     let status = resp.status().as_u16();
     let raw = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {
@@ -215,10 +290,11 @@ async fn check_strict(
             None,
         ));
     }
-    let parsed: ChatResponse = serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
-        provider: provider_label(PROVIDER_LLM).into(),
-        detail: e.to_string(),
-    })?;
+    let parsed: ChatResponse =
+        serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
+            provider: provider_label(PROVIDER_LLM).into(),
+            detail: e.to_string(),
+        })?;
     let content = parsed
         .choices
         .into_iter()
@@ -299,25 +375,52 @@ fn request_parts(
     ))
 }
 
+fn ensure_alive(alive: &impl Fn() -> bool) -> Result<(), EngineError> {
+    if alive() {
+        Ok(())
+    } else {
+        Err(EngineError::Cancelled {
+            provider: provider_label(PROVIDER_LLM).into(),
+        })
+    }
+}
+
 async fn post(
     transport: &dyn Transport,
     url: &str,
     auth: &str,
     body: serde_json::Value,
-    timeout: Duration,
+    deadline: Instant,
 ) -> Result<reqwest::Response, EngineError> {
-    transport
-        .post_json_with_timeout(
+    let remaining = remaining_budget(deadline);
+    if remaining.is_zero() {
+        return Err(EngineError::Network {
+            provider: provider_label(PROVIDER_LLM).into(),
+            detail: "请求超过总时限".into(),
+        });
+    }
+    let first_byte = first_byte_budget(deadline);
+    match tokio::time::timeout(
+        first_byte,
+        transport.post_json_with_timeout(
             url,
             &[("Authorization", auth), ("Accept", "text/event-stream")],
             body,
-            timeout,
-        )
-        .await
-        .map_err(|e| EngineError::Network {
+            remaining,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(resp)) => Ok(resp),
+        Ok(Err(e)) => Err(EngineError::Network {
             provider: provider_label(PROVIDER_LLM).into(),
             detail: e.to_string(),
-        })
+        }),
+        Err(_) => Err(EngineError::Network {
+            provider: provider_label(PROVIDER_LLM).into(),
+            detail: format!("连接或首字节超过 {}ms", first_byte.as_millis()),
+        }),
+    }
 }
 
 async fn http_error(resp: reqwest::Response, status: u16) -> EngineError {
@@ -440,7 +543,9 @@ mod tests {
             .mock("POST", "/v1/chat/completions")
             .with_status(200)
             .with_header("content-type", "text/event-stream")
-            .with_body("data: {\"choices\":[{\"delta\":{\"content\":\"not json\"}}]}\n\ndata: [DONE]\n\n")
+            .with_body(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"not json\"}}]}\n\ndata: [DONE]\n\n",
+            )
             .expect(1)
             .create();
         let good = server
@@ -454,13 +559,9 @@ mod tests {
         let mut events = Vec::new();
         let out = tauri::async_runtime::block_on(async {
             let transport = ReqwestTransport::default();
-            check(
-                &cfg(&base),
-                "sk-test",
-                "Hello.",
-                &transport,
-                &mut |e| events.push(e),
-            )
+            check(&cfg(&base), "sk-test", "Hello.", &transport, &mut |e| {
+                events.push(e)
+            })
             .await
         });
         bad.assert();
@@ -493,6 +594,7 @@ mod tests {
                 "He go to school.".into(),
                 &transport,
                 &mut ignore,
+                &|| true,
             )
             .await
             .unwrap();
@@ -503,6 +605,7 @@ mod tests {
                 "He go to school.".into(),
                 &transport,
                 &mut ignore,
+                &|| true,
             )
             .await
             .unwrap();
@@ -544,6 +647,73 @@ mod tests {
         });
         assert!(matches!(out, Err(EngineError::Network { .. })));
         assert!(started.elapsed() < Duration::from_secs(4));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, GrammarProgressEvent::Retrying { .. })));
+    }
+
+    #[test]
+    fn retry_shares_remaining_budget_instead_of_a_fresh_20s() {
+        cache_clear();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = s.read(&mut buf);
+                let body = "data: {\"choices\":[{\"delta\":{\"content\":\"not json\"}}]}\n\ndata: [DONE]\n\n";
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = s.write_all(resp.as_bytes());
+            }
+            if let Ok((_s, _)) = listener.accept() {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+        });
+        let started = std::time::Instant::now();
+        let mut events = Vec::new();
+        let out = tauri::async_runtime::block_on(async {
+            let transport = ReqwestTransport::new().unwrap();
+            check_with_timeout(
+                &cfg(&format!("http://{addr}/v1")),
+                "sk-test",
+                "Hello.",
+                &transport,
+                &mut |e| events.push(e),
+                Duration::from_millis(400),
+            )
+            .await
+        });
+        assert!(matches!(out, Err(EngineError::Network { .. })));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, GrammarProgressEvent::Retrying { .. })));
+    }
+
+    #[test]
+    fn cancelled_alive_flag_does_not_retry() {
+        cache_clear();
+        let mut events = Vec::new();
+        let out = tauri::async_runtime::block_on(async {
+            let transport = ReqwestTransport::default();
+            let mut cfg = cfg("http://127.0.0.1:9/v1");
+            cfg.enabled = true;
+            super::check_until(
+                &cfg,
+                "sk-test",
+                "Hello.",
+                &transport,
+                &mut |e| events.push(e),
+                Duration::from_secs(20),
+                &|| false,
+            )
+            .await
+        });
+        assert!(matches!(out, Err(EngineError::Cancelled { .. })));
         assert!(!events
             .iter()
             .any(|e| matches!(e, GrammarProgressEvent::Retrying { .. })));

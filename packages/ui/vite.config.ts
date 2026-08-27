@@ -21,6 +21,7 @@ export default defineConfig({
   build: {
     target: ['es2021', 'safari15'],
     cssCodeSplit: false,
+    sourcemap: false,
     outDir: 'dist',
     rollupOptions: {
       input: {

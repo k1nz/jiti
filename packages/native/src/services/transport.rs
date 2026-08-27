@@ -1,7 +1,7 @@
 //! 统一出网封装（§5.6 Transport 边界）：v1 为本地 reqwest，未来可加 RemoteTransport。
 
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use reqwest::{Client, Response};
@@ -10,6 +10,30 @@ use reqwest::{Client, Response};
 pub const TRANSLATE_TIMEOUT: Duration = Duration::from_secs(8);
 pub const GRAMMAR_TIMEOUT: Duration = Duration::from_secs(20);
 pub const REVIEW_TIMEOUT: Duration = GRAMMAR_TIMEOUT;
+/// 连接 / 首字节超过此时长即给用户可见错误；不得用完整 20s 去等 TTFB。
+pub const FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub fn deadline_from_now(total: Duration) -> Instant {
+    Instant::now() + total
+}
+
+pub fn remaining_budget(deadline: Instant) -> Duration {
+    deadline.saturating_duration_since(Instant::now())
+}
+
+/// 流式尝试与一次严格重试共享同一 deadline；重试拿剩余时间，不重新获得完整 20s。
+pub fn retry_budget(deadline: Instant) -> Option<Duration> {
+    let left = remaining_budget(deadline);
+    if left.is_zero() {
+        None
+    } else {
+        Some(left)
+    }
+}
+
+pub fn first_byte_budget(deadline: Instant) -> Duration {
+    remaining_budget(deadline).min(FIRST_BYTE_TIMEOUT)
+}
 
 #[async_trait]
 pub trait Transport: Send + Sync {
@@ -61,9 +85,7 @@ impl Default for ReqwestTransport {
 static SHARED: OnceLock<ReqwestTransport> = OnceLock::new();
 
 pub fn shared() -> ReqwestTransport {
-    SHARED
-        .get_or_init(ReqwestTransport::default)
-        .clone()
+    SHARED.get_or_init(ReqwestTransport::default).clone()
 }
 
 #[async_trait]
@@ -113,5 +135,26 @@ mod tests {
     fn grammar_timeout_is_twenty_seconds() {
         assert_eq!(GRAMMAR_TIMEOUT, Duration::from_secs(20));
         assert_eq!(TRANSLATE_TIMEOUT, Duration::from_secs(8));
+        assert_eq!(FIRST_BYTE_TIMEOUT, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn first_byte_budget_caps_at_ten_seconds() {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        assert!(first_byte_budget(deadline) <= FIRST_BYTE_TIMEOUT);
+        let short = Instant::now() + Duration::from_millis(250);
+        assert!(first_byte_budget(short) <= Duration::from_millis(250));
+    }
+
+    #[test]
+    fn retry_does_not_get_a_fresh_full_budget() {
+        let deadline = Instant::now() + Duration::from_millis(40);
+        std::thread::sleep(Duration::from_millis(10));
+        let left = retry_budget(deadline).expect("still have time");
+        assert!(left < Duration::from_secs(20));
+        assert!(left <= Duration::from_millis(40));
+        let expired = Instant::now() - Duration::from_millis(1);
+        assert!(retry_budget(expired).is_none());
+        assert!(remaining_budget(expired).is_zero());
     }
 }

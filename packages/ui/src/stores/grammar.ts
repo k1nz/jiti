@@ -7,6 +7,7 @@ import type {
   GrammarProgressEvent_Deserialize,
   GrammarResult_Serialize,
 } from '../ipc/bindings';
+import { LOADING_SPINNER_DELAY_MS, shouldShowDelayedSpinner } from '../loading';
 
 export type GrammarStatus = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 
@@ -20,6 +21,9 @@ export const useGrammarStore = defineStore('grammar', () => {
   const error = ref<EngineErrorPayload | null>(null);
   const retrying = ref(false);
   const mistakeIds = ref<(number | null)[]>([]);
+  const startedAt = ref<number | null>(null);
+  const spinnerVisible = ref(false);
+  let spinnerTimer: ReturnType<typeof setTimeout> | undefined;
 
   const hasContent = computed(
     () => overall.value !== null || correctedText.value !== null || errors.value.length > 0,
@@ -27,6 +31,27 @@ export const useGrammarStore = defineStore('grammar', () => {
 
   function isLive(id: number) {
     return id === runId.value;
+  }
+
+  function clearSpinnerTimer() {
+    if (spinnerTimer !== undefined) {
+      clearTimeout(spinnerTimer);
+      spinnerTimer = undefined;
+    }
+  }
+
+  function armSpinner(id: number) {
+    clearSpinnerTimer();
+    spinnerVisible.value = false;
+    startedAt.value = Date.now();
+    spinnerTimer = setTimeout(() => {
+      if (!isLive(id)) return;
+      spinnerVisible.value = shouldShowDelayedSpinner({
+        busy: status.value === 'loading' || status.value === 'streaming',
+        hasContent: hasContent.value,
+        elapsedMs: LOADING_SPINNER_DELAY_MS,
+      });
+    }, LOADING_SPINNER_DELAY_MS);
   }
 
   function begin(): number {
@@ -40,6 +65,7 @@ export const useGrammarStore = defineStore('grammar', () => {
     result.value = null;
     error.value = null;
     mistakeIds.value = [];
+    armSpinner(id);
     return id;
   }
 
@@ -52,14 +78,17 @@ export const useGrammarStore = defineStore('grammar', () => {
       case 'overall':
         status.value = 'streaming';
         overall.value = event.text;
+        if (hasContent.value) spinnerVisible.value = false;
         break;
       case 'correctedText':
         status.value = 'streaming';
         correctedText.value = event.text;
+        if (hasContent.value) spinnerVisible.value = false;
         break;
       case 'error':
         status.value = 'streaming';
         errors.value = [...errors.value, event.error];
+        if (hasContent.value) spinnerVisible.value = false;
         break;
       case 'retrying':
         retrying.value = true;
@@ -69,9 +98,12 @@ export const useGrammarStore = defineStore('grammar', () => {
         result.value = null;
         mistakeIds.value = [];
         status.value = 'loading';
+        armSpinner(id);
         break;
       case 'finished':
         retrying.value = false;
+        spinnerVisible.value = false;
+        clearSpinnerTimer();
         if (status.value !== 'error') status.value = 'done';
         break;
     }
@@ -87,6 +119,8 @@ export const useGrammarStore = defineStore('grammar', () => {
     errors.value = finalResult.errors;
     mistakeIds.value = alignMistakeIds(ids, finalResult.errors.length);
     retrying.value = false;
+    spinnerVisible.value = false;
+    clearSpinnerTimer();
     status.value = 'done';
   }
 
@@ -101,12 +135,17 @@ export const useGrammarStore = defineStore('grammar', () => {
     if (!isLive(id)) return;
     error.value = payload;
     retrying.value = false;
+    spinnerVisible.value = false;
+    clearSpinnerTimer();
     status.value = 'error';
   }
 
   function reset() {
     begin();
     status.value = 'idle';
+    spinnerVisible.value = false;
+    clearSpinnerTimer();
+    startedAt.value = null;
   }
 
   return {
@@ -120,6 +159,8 @@ export const useGrammarStore = defineStore('grammar', () => {
     retrying,
     mistakeIds,
     hasContent,
+    startedAt,
+    spinnerVisible,
     begin,
     applyProgress,
     finish,

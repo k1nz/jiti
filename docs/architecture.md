@@ -1,12 +1,13 @@
 # Jiti · 快速翻译 / 语法检查桌面工具 · 技术架构设计
 
 > 工作代号：**Jiti**（可随时改名）
-> 版本：**v0.4.0** · 2026-08-27 · 面向 macOS 与 Windows 10/11
+> 版本：**v0.5.0-rc.1** · 2026-08-27 · 面向 macOS 与 Windows 10/11
 > 目标形态：Raycast 风格的小弹窗，全局快捷键唤起，常驻后台，秒级显示
 > v0.2 变更：依据 `native-feel-cross-platform-desktop` 技能完成架构审计（哲学八原则、WebView 存活清单、IPC 单契约、内存基线修正），依据 `design-taste-frontend` 重写 UI 层设计规范
 > v0.2.2 变更：M2 语法检查闭环（SSE+NDJSON、错误卡片、grammar 历史、进程内 LRU）
 > v0.3.0 变更：M3 错题本（版本化 SQLite、自动/手动收录、筛选、Markdown 导出、AI 复习）；LanguageTool / i18n / 主题 / 自启仍属后续里程碑
 > v0.4.0 变更：M4 设置完善（独立设置窗口、开机自启、vue-i18n zh-CN/en-US、浅/深/系统主题、IME 专项 QA）；弹窗位置策略与 LanguageTool 仍后置
+> v0.5.0-rc.1 变更：M5 拆为 **M5 RC**（流式总预算/取消、原生约定审计、75 项门禁、ad-hoc macOS + 未签名 Windows 内部产物）与 **M5.1**（证书到位后的签名、公证、公开发布）。Keychain 迁移继续后置。
 
 ---
 
@@ -25,7 +26,7 @@
 | 4 | AI 复习 | 一键总结高频错误、生成复习要点 |
 | 5 | 历史记录 | 最近查询历史，可翻看 |
 | 6 | 设置 | 快捷键重配、开机自启、多语言设定、引擎管理与测试 |
-| 7 | 交互 | 选中即弹 + 手动输入；Tab 切模式；不同快捷键直达对应模式 |
+| 7 | 交互 | 选中即弹 + 手动输入；方向键 / ⌘←→ 切模式；不同快捷键直达对应模式 |
 | 8 | 引擎 | 可插拔 Provider：云端大模型 + DeepL / 有道 / Google 等翻译 API |
 | 9 | 服务模式 | v1 用户自带 Key、纯本地；**架构预留**未来后端 / SaaS 切换 |
 
@@ -232,7 +233,7 @@ tauri_specta::ts::export(
 - 焦点语义：无手动输入需要时尽量避免激活（`WS_EX_NOACTIVATE`），需要输入时正常激活。托盘图标是 Windows 主流形态。
 
 ### 4.4 位置策略
-默认**跟随鼠标**（读光标坐标 → 换算显示器工作区 → 贴边出现在光标附近，不遮光标）；设置可切「屏幕中央 / 记住位置」；记住每屏位置（多显示器）。
+默认**跟随鼠标**（读光标坐标 → 换算显示器工作区 → 贴边出现在光标附近，不遮光标）。v0.5 不提供「记住位置」设置：这是产品策略，ship-readiness 第 15 项按有依据的 N/A 记录，不为过门禁扩展设置范围。屏幕中央与每屏记忆仍后置。
 
 ### 4.5 「选中即弹」：读取当前选中文本的机制链
 
@@ -354,7 +355,7 @@ interface GrammarError {
 ### 5.5 LLM 提示词设计与成本控制
 - 语法：系统提示固定英语检查、中文讲解、封闭枚举和 NDJSON 顺序；翻译仍输出纯文本。
 - 默认模型选最便宜档（gpt-4o-mini / deepseek-chat / haiku），`maxTokens` 上限沿用 Provider 配置，缺省 1024。
-- 相同输入的**内存 LRU 缓存**（键含输入、模型、Base URL、提示词版本）；请求级超时（语法 20s / 翻译 8s）。连接池共享，超时不绑在 Client 上。
+- 相同输入的**内存 LRU 缓存**（键含输入、模型、Base URL、提示词版本）；请求级超时（语法 20s 总预算含一次严格重试 / 翻译 8s）。连接或首字节超过 10s 即用户可见错误。连接池共享，超时不绑在 Client 上。
 - AI 复习复用同一 LLM Provider，单独 prompt，只读历史错误聚合高频类型（M3）。
 
 ### 5.6 商业化（SaaS）预留边界
@@ -368,7 +369,7 @@ interface GrammarError {
 
 按数据类型三分存放，对齐 Raycast 等本地优先桌面应用：**不要**把配置、历史、密钥塞进同一个明文库或同一份 JSON。
 
-| 类型 | 现在（v1 / 开发期） | 目标（M5 签名公证后，可选升级） | 明确不放 |
+| 类型 | 现在（v1 / 开发期 / M5 RC） | 目标（M5.1 签名公证后，可选升级） | 明确不放 |
 |---|---|---|---|
 | 非密钥配置 | `settings.json`（热键、主题、默认引擎、窗口位置） | 不变 | API Key、历史、错题 |
 | 用户内容 | SQLite（`history` / `mistakes`） | 不变 | API Key |
@@ -417,7 +418,7 @@ CREATE INDEX idx_history_created ON history(created_at);
 **现在（已落地）**  
 API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `settings.json` 分开。路径示例：macOS `~/Library/Application Support/com.jiti.app/keys.json`。不走 Keychain / Credential Manager，避免未签名开发构建每次启动或读写都弹系统密码。WebView 只见存在性，拿不到明文。文件明文落盘是为省掉授权打扰的取舍。
 
-**目标（M5 签名公证之后，后置可选）**  
+**目标（M5.1 签名公证之后，后置可选；不在本次 RC 范围）**  
 向 Raycast 看齐，而不是继续把 Key 当普通配置：
 
 1. 应用 **Developer ID 签名 + 公证** 后，本进程读写 Keychain 通常静默通过（Raycast 不弹密码的主因是签名，不是「写进了数据库」）。
@@ -441,7 +442,7 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 | 快捷键 | 全局热键（翻译 / 语法 / 统一面板）、是否激活焦点、冲突检测 |
 | 引擎 | 各 Provider Key 录入与状态、默认引擎、fallback 顺序、测试连接 |
 | 语言 | 翻译方向（中英）、语法目标语言（英语）、界面语言（zh/en 跟随系统或手动） |
-| 通用 | 开机自启、弹窗位置（跟随鼠标/居中/记住）、主题（浅/深/系统）、是否写历史 |
+| 通用 | 开机自启、主题（浅/深/系统）、是否写历史。弹窗默认跟随鼠标；「记住位置」不在 v0.5 |
 | 错题本 | 是否自动收录、默认 status、导出位置 |
 | 权限 | macOS 无障碍 / Tauri 权限状态卡 + 一键跳系统设置 |
 
@@ -462,7 +463,7 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 ### 7.3 快捷键配置
 - 默认两套（均可改）：macOS `⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板（上次模式）；Windows `Ctrl+Shift+T` 翻译 / `Ctrl+Alt+G` 语法 / `Ctrl+Alt+Space` 统一面板。
 - 设置页点击组合键后按下新快捷键即可重配；变更即 Unregister+Register（tauri-plugin-global-shortcut），与本应用其它热键冲突或系统占用时弹提示。
-- 面板内 `Tab` 切模式、`Esc` 收起、`⌘Enter` 手动触发、`⌘C` 复制结果。**`Esc` 永远有明确含义**（原生约定）。
+- 面板内 `Tab` / `Shift+Tab` 做自然焦点遍历；模式切换用方向键（Tab 条）或 `⌘←/→` · `Ctrl+←/→`。`Esc` 先关当前弹层再隐藏面板；`⌘W` / `Ctrl+W` 只隐藏主面板并保持预热。`⌘Enter` 手动触发、`⌘C` 复制结果。**`Esc` 永远有明确含义**（原生约定）。
 
 ---
 
@@ -504,7 +505,7 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 ```
 ┌──────────────────────────────────────────────┐  ← 平台窗口（OS 圆角/阴影/材质）
 │ [ 搜索/输入框  选中自动填入 ]                     │  ← 聚焦即全选，可直接替换
-│ [ 翻译 ] [ 语法 ] [ 错题本 ] [ 历史 ]           │  ← Tab 切换；设置走独立窗口（⌘, / Ctrl-,）
+│ [ 翻译 ] [ 语法 ] [ 错题本 ] [ 历史 ]           │  ← 方向键 / ⌘←→ 切换；设置走独立窗口（⌘, / Ctrl-,）
 │ ┌──────────────────────────────────────────┐ │
 │ │ 翻译: 原文 / 译文 [+复制]                 │ │
 │ │ 语法: 错误卡片(类型/严重度/修改/中文讲解)  │ │
@@ -531,7 +532,7 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 - 键盘全可达：Tab/方向键到每个动作；焦点环用平台样式；**Esc 永远有明确行为**；列表支持打字跳转（type-ahead）
 - 设置是**独立原生窗口**（⌘, / Ctrl-,），不是主窗内 modal；确认类对话用系统原生 `NSAlert`/`MessageBox`，**不用 DOM 遮罩层**
 - 明暗随系统、切换无闪帧；系统强调色为可选增强（可先不用，保持品牌单一强调色）
-- 窗口尺寸/位置跨启动记忆；多屏在激活屏打开
+- 多屏在光标所在屏打开并夹取到工作区；默认跟随鼠标，不记忆位置（§4.4）
 
 ### 8.5 状态设计（加载 / 空 / 错误，完整闭环）
 
@@ -588,8 +589,11 @@ jiti/
 │     └─ capabilities/     #  权限白名单
 ├─ docs/
 │  ├─ architecture.md      # 本文档
-│  └─ api-contract.md      # IPC 与引擎契约（未来 OpenAPI 初稿）
-└─ .github/workflows/      # tauri-action 双端打包
+│  ├─ api-contract.md      # IPC 与引擎契约（未来 OpenAPI 初稿）
+│  ├─ m5-readiness.md      # 75 项 ship-readiness 逐项结论
+│  ├─ m5-qa.md             # 双端真机 QA
+│  └─ m4-ime-qa.md         # IME 专项 QA
+└─ .github/workflows/      # ci.yml / rc-build.yml；release.yml 属 M5.1
 ```
 
 关键工程纪律：
@@ -600,15 +604,23 @@ jiti/
 
 ## 11. 构建、分发与签名
 
+M5 拆成两段，避免把内部可测产物卡在 Apple Developer 证书上。
+
+| 阶段 | 版本 | 产物 | 分发 |
+|---|---|---|---|
+| **M5 RC** | `0.5.0-rc.1` | macOS ad-hoc 签名 `.app/.dmg`；Windows 未签名 `.msi/.exe` | GitHub Actions artifact，仅内部测试，不宣称可信发布 |
+| **M5.1** | `0.5.0` | macOS Developer ID + 公证 + staple；Windows 代码签名（若证书独立到位） | 公开 GitHub Release |
+
 | 平台 | 产物 | 注意 |
 |---|---|---|
-| macOS | `.dmg` / `.app` | 公开分发需 Apple Developer 签名 + 公证（$99/年）；v1 自用可不签 |
-| Windows | `.msi` / `.nsis` | 建议代码签名；WebView2 缺失时引导装 bootstrapper |
-| CI | GitHub Actions + tauri-action | macOS 需 macOS runner，双端矩阵 |
+| macOS | `.dmg` / `.app` | RC 用 `signingIdentity: "-"` 做 ad-hoc，避免 CI 下来的 Apple Silicon 包被直接判「已损坏」。公开分发需 Apple Developer 签名 + 公证（$99/年）。未公证包的 Gatekeeper 限制见 [`docs/m5-qa.md`](m5-qa.md)，**不要**让测试者永久关闭 Gatekeeper。 |
+| Windows | `.msi` / `.nsis` | RC 未签名；SmartScreen 可能提示。WebView2 缺失时引导装 bootstrapper。Windows 签名不与 Apple 凭据耦合。 |
+| CI | GitHub Actions | `ci.yml` 跑门禁；`rc-build.yml` 出内部包；`release.yml` 仅 M5.1、走受保护 Environment 注入证书。 |
 
 - `tauri.conf.json` 统一管透明 / 无边框 / alwaysOnTop / 初始隐藏 / macosPrivateApi。
-- v1 不做自动更新；二期可接 `tauri-plugin-updater`（发布前把「升级是真实流程」列入，而不是"请手动下载新版"）。
-- 崩溃上报接 Sentry（`tauri-plugin-sentry`），发布版才启用。
+- v0.5 **不做自动更新**（ship-readiness 第 62 项 N/A）；不为过门禁临时加 updater。
+- URL Scheme、文件关联、系统通知同样不在 v0.5 范围，清单里标 N/A，不为过门禁临时加功能。
+- 崩溃上报用 `sentry` Rust SDK（`packages/native/src/services/crash.rs`），**仅 M5.1 在 `release.yml` 编译期注入 `JITI_SENTRY_DSN` 时启用**。不向 WebView 注入 JS，避免把用户正文带进事件。上报前清洗 Bearer / `sk-` / 敏感 extra 键，并丢弃 request/user。RC 不对外宣称已接崩溃上报。符号文件（`split-debuginfo = packed`）在 M5.1 用 `sentry-cli debug-files upload` 上传。
 
 ---
 
@@ -622,7 +634,7 @@ jiti/
 | E2E（增值） | tauri-driver / WebdriverIO | 弹窗开合、热键→面板、假引擎翻译/语法流程 |
 | 手工 QA | 真机双端 | 权限引导、快捷键冲突、**Pinyin 输入法**（[`docs/m4-ime-qa.md`](m4-ime-qa.md)）、断网降级、**隐藏窗节流（§4.6 A.1）** |
 
-**发布门禁**：M5 收尾时跑一遍 native-feel `checklists/ship-readiness.md`（70 项审计，A-G 段不允许红，H/I 可少量留）。详见附录 A。
+**发布门禁**：M5 RC 跑一遍 native-feel `checklists/ship-readiness.md`（完整 **75** 项，A–G 不允许未解释的 Red，H/I 可少量留）。逐项结论见 [`docs/m5-readiness.md`](m5-readiness.md)。不属于本工具 v0.5 的能力标 N/A，而不是为过门禁临时加功能。真机步骤见 [`docs/m5-qa.md`](m5-qa.md)。
 
 ---
 
@@ -671,7 +683,7 @@ jiti/
 5. **P1 · LLM 不稳定输出**：JSON 解析失败重试/降级；错误统一分类（密钥缺失 / 限流 / 网络）。
 6. **P1 · 中文输入法（IME）**：WebView2/WKWebView 的 Pinyin 候选框问题（§4.6 B.5），双语应用必测。
 7. **P1 · 首帧白闪**：mac `_doAfterNextPresentationUpdate` / Win `NavigationCompleted` 后才 show（§4.6 A.2 / B.1）。
-8. **P1 · 密钥明文落盘**：v1 用 `keys.json` 换取不弹密码；M5 签名公证后可升级加密库 / Keychain（§6.2）。WebView 始终拿不到明文。Key 不得写入历史 SQLite。
+8. **P1 · 密钥明文落盘**：v1 用 `keys.json` 换取不弹密码；M5.1 签名公证后可升级加密库 / Keychain（§6.2）。WebView 始终拿不到明文。Key 不得写入历史 SQLite。
 9. **P2 · Windows 透明/圆角受限**：v1 稳妥视觉，Mica 增值。
 10. **P2 · macOS 自启**：SMAppService 要求 App 在 /Applications。
 11. **P2 · 国内网络可达性**：Provider 排序要贴合用户网络（有道/DeepSeek）。
@@ -688,17 +700,18 @@ jiti/
 | **M2 语法** | LLM NDJSON 流式 + 一次结构重试、错误卡片、grammar 历史；LanguageTool 仅留分支 | 语法检查可用 |
 | **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结；语法自动/手动收录 | 错题本能用 |
 | **M4 设置完善** | 自启、i18n、主题、独立设置窗口、IME 专项 QA（快捷键重配已落地） | 可交付内测（已接通） |
-| **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、**签名公证双端打包**（签名后 Keychain 可静默访问，为密钥升级铺路） | 可对外分发 |
+| **M5 RC** | 流式总预算与取消、原生约定审计（§8.4）、**ship-readiness 75 项（§12 / [`m5-readiness.md`](m5-readiness.md)）**、CI、ad-hoc macOS + 未签名 Windows 内部包 | 内部可安装 RC，不对外宣称可信 |
+| **M5.1 正式发布** | Developer ID 签名、公证、staple、Gatekeeper / SmartScreen 复测、生产崩溃上报；Windows 签名独立处理 | 可对外分发的 `0.5.0` |
 | **后置** | **密钥升级（可选，§6.2）**：`keys.json` → 加密库或 Keychain，一次性迁移、IPC 不变、Key 永不进历史表；Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |
 
 ---
 
-## 附录 A · Ship-Readiness 关键项（从 70 项中截取本项目红线）
+## 附录 A · Ship-Readiness 关键项（从 75 项中截取本项目红线）
 
-（完整清单见技能 `checklists/ship-readiness.md`，M5 全量执行。红线摘录：）
+（完整清单见技能 `checklists/ship-readiness.md`，M5 RC 全量执行并记入 [`docs/m5-readiness.md`](m5-readiness.md)。红线摘录：）
 
 - 热键→可见窗口 暖 <200ms / 冷 <600ms；无白黑闪（A.2/B.1）
-- 弹窗出现在激活屏、记住位置；初始焦点在输入框、可直接打字
+- 弹窗出现在光标所在屏并夹取到工作区；默认跟随鼠标（记住位置为 N/A）；初始焦点在输入框、可直接打字
 - ⌘W 关窗 / ⌘M 最小化 / 绿点缩放；点击外部按配置隐藏（可预测）
 - 设置是独立窗口（⌘, / Ctrl-,）；无 DOM 遮罩"对话框"
 - 无 `cursor:pointer`（行/按钮/Tab）；chrome 不可选中文本
@@ -740,4 +753,4 @@ jiti/
 
 ---
 
-*本文档随需求变化维护。弹窗位置（跟随鼠标/居中/记住）与 LanguageTool 适配器仍后置，不在 M4 范围。*
+*本文档随需求变化维护。弹窗「居中」策略与 LanguageTool 适配器仍后置。记住位置在 v0.5 按产品策略标 N/A。*

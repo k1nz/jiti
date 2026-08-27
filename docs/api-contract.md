@@ -1,6 +1,6 @@
 # Jiti IPC 契约
 
-> 版本：**SCHEMA_VERSION = 6** · 2026-08-27 · M4 设置完善
+> 版本：**SCHEMA_VERSION = 7** · 2026-08-27 · M5 RC
 > 事实源：`packages/native/src/ipc.rs`（tauri-specta 生成 `packages/ui/src/ipc/bindings.ts`）
 > 本文同时是未来远程后端 OpenAPI 初稿。破坏性变更必升 `SCHEMA_VERSION`；新字段一律 optional。
 
@@ -11,7 +11,7 @@
 | 命令 | 入参 | 出参 | 说明 |
 |---|---|---|---|
 | `translate` | `TranslateRequest` | `TranslateResult` / `EngineErrorPayload` | 翻译；成功可写 `history(kind=translate)` |
-| `grammar_check` | `GrammarRequest` + progress Channel | `GrammarCheckOutcome` / `EngineErrorPayload` | SSE+NDJSON；`mistakeIds` 与 `result.errors` 按下标对齐 |
+| `grammar_check` | `GrammarRequest` + progress Channel | `GrammarCheckOutcome` / `EngineErrorPayload` | SSE+NDJSON；`requestId` 可选；被替换的请求返回 `cancelled` 且不写历史/错题；`mistakeIds` 与 `result.errors` 按下标对齐 |
 | `mistakes_list` | `MistakeFilter` | `MistakeList` | 分页/全量筛选 |
 | `mistakes_create` | `NewMistake` | `Mistake` | 手动收录；缺省 status 用偏好 `defaultStatus` |
 | `mistakes_update` | `id`, `MistakePatch` | `Mistake` | 改 status / tags |
@@ -70,4 +70,5 @@ PreferencesSnapshot {
 
 ## 错误码
 
-`missing_key` / `unauthorized` / `rate_limited` / `network` / `invalid_config` / `bad_request` / `invalid_response` / `upstream`。
+`missing_key` / `unauthorized` / `rate_limited` / `network` / `invalid_config` / `bad_request` / `invalid_response` / `cancelled` / `upstream`。
+被新热键替换或 Channel 关闭的语法检查返回 `cancelled`，不发 `engine://error`，也不写入历史/错题。

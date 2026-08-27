@@ -1,0 +1,172 @@
+name: Release
+
+# M5.1 only. Inject Apple / Windows signing material and the production
+# Sentry DSN via the protected `release` GitHub Environment.
+# Never echo secrets. Do not enable until certificates are in place.
+#
+# Required Environment secrets (macOS):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, KEYCHAIN_PASSWORD,
+#   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+# Optional:
+#   JITI_SENTRY_DSN (compile-time; empty = crash reporting stays off)
+#   SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT (debug-file upload)
+#   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD (Authenticode; not coupled to Apple)
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v0.5.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-latest
+            args: --target aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+            verify: mac
+          - name: macos-x64
+            os: macos-latest
+            args: --target x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+            verify: mac
+          - name: windows-x64
+            os: windows-latest
+            args: --target x86_64-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
+            verify: win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:versions
+      - name: Import Apple certificate
+        if: matrix.verify == 'mac'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          test -n "$APPLE_CERTIFICATE"
+          CERT_PATH="$RUNNER_TEMP/developer_id.p12"
+          KEYCHAIN="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          rm -f "$CERT_PATH"
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          JITI_SENTRY_DSN: ${{ secrets.JITI_SENTRY_DSN }}
+        with:
+          projectPath: packages/native
+          args: ${{ matrix.args }}
+          tagName: v__VERSION__
+          releaseName: Jiti v__VERSION__
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: false
+      - name: Verify macOS signature and notarization
+        if: matrix.verify == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find packages/native/target -name 'Jiti.app' -type d | head -n 1)
+          DMG=$(find packages/native/target -name '*.dmg' | head -n 1)
+          test -n "$APP"
+          codesign --verify --deep --strict "$APP"
+          if [[ -n "$DMG" ]]; then
+            stapler validate "$DMG" || stapler validate "$APP"
+          else
+            stapler validate "$APP"
+          fi
+          spctl --assess --type execute --verbose "$APP"
+      - name: Sign Windows artifacts
+        if: matrix.verify == 'win'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE)) {
+            Write-Host "No Windows certificate configured; leaving unsigned (Apple credentials are not used)."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "win-code-sign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $files = Get-ChildItem -Recurse "packages/native/target" |
+            Where-Object { $_.FullName -match '[\\/]bundle[\\/]' -and ($_.Extension -eq '.msi' -or $_.Extension -eq '.exe') }
+          if (-not $files) {
+            throw "No Windows bundle artifacts found to sign"
+          }
+          foreach ($f in $files) {
+            & signtool sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $f.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for $($f.FullName)" }
+            & signtool verify /pa $f.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed for $($f.FullName)" }
+          }
+          Remove-Item $pfx -Force
+      - name: Upload Sentry debug files
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        shell: bash
+        run: |
+          if [ -z "${SENTRY_AUTH_TOKEN}" ]; then
+            echo "SENTRY_AUTH_TOKEN not set; skip debug-file upload"
+            exit 0
+          fi
+          npm install -g @sentry/cli
+          sentry-cli debug-files upload packages/native/target
+      - name: Checksums
+        shell: bash
+        run: |
+          mkdir -p checksums
+          find packages/native/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
+            | grep -E '/bundle/' \
+            | while read -r f; do
+                if command -v shasum >/dev/null; then shasum -a 256 "$f"; else sha256sum "$f"; fi
+              done | tee checksums/${{ matrix.name }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jiti-0.5.0-${{ matrix.name }}
+          path: |
+            packages/native/target/**/bundle/**
+            checksums/**
+          if-no-files-found: warn
+      - name: Attach checksums to draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload "${{ github.ref_name }}" checksums/${{ matrix.name }}.sha256 --clobber

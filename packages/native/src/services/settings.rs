@@ -12,8 +12,9 @@ const MISTAKES_KEY: &str = "mistakes";
 pub fn load_provider_config(app: &AppHandle) -> Result<ProvidersConfig, String> {
     let store = app.store("settings.json").map_err(|e| e.to_string())?;
     match store.get(PROVIDERS_KEY) {
-        Some(value) => serde_json::from_value(value)
-            .map_err(|e| format!("providers 配置解析失败：{e}")),
+        Some(value) => {
+            serde_json::from_value(value).map_err(|e| format!("providers 配置解析失败：{e}"))
+        }
         _ => Ok(ProvidersConfig::default()),
     }
 }

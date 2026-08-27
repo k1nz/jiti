@@ -2,9 +2,8 @@
 //! 短拉丁词（如 Epoch）交给 DeepL 自动识别时经常被标成 SK，译文原样返回。
 
 pub fn has_cjk(text: &str) -> bool {
-    text.chars().any(|c| {
-        ('\u{3400}'..='\u{4DBF}').contains(&c) || ('\u{4E00}'..='\u{9FFF}').contains(&c)
-    })
+    text.chars()
+        .any(|c| ('\u{3400}'..='\u{4DBF}').contains(&c) || ('\u{4E00}'..='\u{9FFF}').contains(&c))
 }
 
 pub fn has_latin(text: &str) -> bool {

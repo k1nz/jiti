@@ -1,7 +1,7 @@
 {
   "name": "jiti",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0-rc.1",
   "description": "Jiti — 快速翻译 / 语法检查桌面工具（工作代号）",
   "packageManager": "pnpm@10.28.1",
   "scripts": {
@@ -11,6 +11,9 @@
     "ui:build": "pnpm --dir packages/ui build",
     "ui:test": "pnpm --dir packages/ui test",
     "ui:typecheck": "pnpm --dir packages/ui typecheck",
-    "test": "pnpm --dir packages/ui test && cargo test --manifest-path packages/native/Cargo.toml"
+    "test": "pnpm --dir packages/ui test && cargo test --manifest-path packages/native/Cargo.toml",
+    "check:versions": "node scripts/check-versions.mjs",
+    "check:fmt": "cargo fmt --manifest-path packages/native/Cargo.toml --all -- --check",
+    "check:clippy": "cargo clippy --manifest-path packages/native/Cargo.toml --all-targets"
   }
 }

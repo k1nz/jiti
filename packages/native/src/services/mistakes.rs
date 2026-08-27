@@ -112,11 +112,7 @@ pub struct NewMistake {
 }
 
 impl NewMistake {
-    pub fn from_grammar_error(
-        result: &GrammarResult,
-        error: &GrammarError,
-        status: &str,
-    ) -> Self {
+    pub fn from_grammar_error(result: &GrammarResult, error: &GrammarError, status: &str) -> Self {
         Self {
             source_text: result.input.clone(),
             fragment: error.fragment.clone(),
@@ -250,14 +246,18 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Mistake> {
         fragment: row.get(3)?,
         correction: row.get(4)?,
         error_type: row.get(5)?,
-        severity: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "medium".into()),
+        severity: row
+            .get::<_, Option<String>>(6)?
+            .unwrap_or_else(|| "medium".into()),
         explanation: row.get(7)?,
         corrected_sentence: row.get(8)?,
         suggestions: parse_suggestions(row.get(9)?),
         engine: row.get(10)?,
         source_app: row.get(11)?,
         tags: row.get(12)?,
-        status: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| STATUS_OPEN.into()),
+        status: row
+            .get::<_, Option<String>>(13)?
+            .unwrap_or_else(|| STATUS_OPEN.into()),
         meta: row.get(14)?,
         server_id: row.get(15)?,
         synced_at: row.get(16)?,
@@ -416,9 +416,8 @@ pub fn list(conn: &Connection, filter: &MistakeFilter) -> Result<MistakeList, St
         stmt.query_row(params_from_iter(bound.iter()), |row| row.get(0))
             .map_err(|e| e.to_string())?
     };
-    let mut sql = format!(
-        "SELECT {SELECT_COLUMNS} FROM mistakes WHERE {where_sql} ORDER BY id DESC"
-    );
+    let mut sql =
+        format!("SELECT {SELECT_COLUMNS} FROM mistakes WHERE {where_sql} ORDER BY id DESC");
     let mut query_params = bound;
     if let Some(limit) = filter.limit.filter(|n| *n > 0) {
         sql.push_str(" LIMIT ?");
@@ -517,10 +516,7 @@ pub fn render_markdown(items: &[Mistake]) -> String {
     for (key, bucket) in groups {
         out.push_str(&format!("\n## {}\n", error_type_label(&key)));
         for item in bucket {
-            out.push_str(&format!(
-                "\n### {}\n\n",
-                escape_markdown(&item.source_text)
-            ));
+            out.push_str(&format!("\n### {}\n\n", escape_markdown(&item.source_text)));
             out.push_str(&format!(
                 "- 片段 → 修改：`{}` → `{}`\n",
                 item.fragment.replace('`', "'"),
@@ -791,18 +787,16 @@ mod tests {
             .unwrap();
         assert_eq!(count, 0);
 
-        let ids = collect_from_grammar(
-            &mut conn,
-            &result,
-            &MistakePreferences::default(),
-        )
-        .unwrap();
+        let ids = collect_from_grammar(&mut conn, &result, &MistakePreferences::default()).unwrap();
         assert_eq!(ids.len(), 1);
         assert!(ids[0].is_some());
         let stored = get(&conn, ids[0].unwrap()).unwrap().unwrap();
         assert_eq!(stored.fragment, "go");
         assert_eq!(stored.engine.as_deref(), Some("LLM"));
-        assert_eq!(stored.corrected_sentence.as_deref(), Some("He goes to school."));
+        assert_eq!(
+            stored.corrected_sentence.as_deref(),
+            Some("He goes to school.")
+        );
 
         let empty = collect_from_grammar(
             &mut conn,
@@ -819,43 +813,46 @@ mod tests {
 
     #[test]
     fn markdown_groups_and_escapes() {
-        let items = vec![Mistake {
-            id: 1,
-            created_at: "2026-08-27 01:00:00".into(),
-            source_text: "See *this* #tag".into(),
-            fragment: "this".into(),
-            correction: "that".into(),
-            error_type: Some("grammar".into()),
-            severity: "high".into(),
-            explanation: Some("星号 * 要转义".into()),
-            corrected_sentence: None,
-            suggestions: vec![],
-            engine: None,
-            source_app: None,
-            tags: None,
-            status: STATUS_OPEN.into(),
-            meta: None,
-            server_id: None,
-            synced_at: None,
-        }, Mistake {
-            id: 2,
-            created_at: "2026-08-27 01:01:00".into(),
-            source_text: "recieve".into(),
-            fragment: "recieve".into(),
-            correction: "receive".into(),
-            error_type: Some("spelling".into()),
-            severity: "medium".into(),
-            explanation: Some("ie/ei".into()),
-            corrected_sentence: None,
-            suggestions: vec![],
-            engine: None,
-            source_app: None,
-            tags: None,
-            status: STATUS_LEARNED.into(),
-            meta: None,
-            server_id: None,
-            synced_at: None,
-        }];
+        let items = vec![
+            Mistake {
+                id: 1,
+                created_at: "2026-08-27 01:00:00".into(),
+                source_text: "See *this* #tag".into(),
+                fragment: "this".into(),
+                correction: "that".into(),
+                error_type: Some("grammar".into()),
+                severity: "high".into(),
+                explanation: Some("星号 * 要转义".into()),
+                corrected_sentence: None,
+                suggestions: vec![],
+                engine: None,
+                source_app: None,
+                tags: None,
+                status: STATUS_OPEN.into(),
+                meta: None,
+                server_id: None,
+                synced_at: None,
+            },
+            Mistake {
+                id: 2,
+                created_at: "2026-08-27 01:01:00".into(),
+                source_text: "recieve".into(),
+                fragment: "recieve".into(),
+                correction: "receive".into(),
+                error_type: Some("spelling".into()),
+                severity: "medium".into(),
+                explanation: Some("ie/ei".into()),
+                corrected_sentence: None,
+                suggestions: vec![],
+                engine: None,
+                source_app: None,
+                tags: None,
+                status: STATUS_LEARNED.into(),
+                meta: None,
+                server_id: None,
+                synced_at: None,
+            },
+        ];
         let md = render_markdown(&items);
         assert!(md.contains("## 语法"));
         assert!(md.contains("## 拼写"));

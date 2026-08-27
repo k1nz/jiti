@@ -1,6 +1,6 @@
 [package]
 name = "jiti"
-version = "0.1.0"
+version = "0.5.0-rc.1"
 description = "Jiti — 快速翻译 / 语法检查桌面工具"
 edition = "2021"
 
@@ -29,6 +29,15 @@ eventsource-stream = "0.2"
 futures-util = "0.3"
 bytes = "1"
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+tokio = { version = "1", features = ["time", "rt", "macros"] }
+sentry = { version = "0.49", default-features = false, features = [
+  "backtrace",
+  "contexts",
+  "panic",
+  "debug-images",
+  "reqwest",
+  "rustls",
+] }
 
 # macOS 原生缝（objc2）：无焦点面板 / 防节流 / 首帧同步 / 光标定位
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -50,6 +59,7 @@ windows = { version = "0.62", features = [
   "Win32_System_Memory",
   "Win32_System_Ole",
   "Win32_UI_Accessibility",
+  "Win32_Graphics_Gdi",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }
@@ -66,4 +76,6 @@ incremental = true
 codegen-units = 1
 lto = true
 opt-level = "s"
+debug = "line-tables-only"
+split-debuginfo = "packed"
 strip = true

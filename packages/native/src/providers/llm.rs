@@ -6,9 +6,7 @@ use serde_json::json;
 
 use crate::services::transport::Transport;
 
-use super::{
-    EngineError, ProviderConfig, TranslateRequest, TranslateResult, lang, provider_label,
-};
+use super::{lang, provider_label, EngineError, ProviderConfig, TranslateRequest, TranslateResult};
 
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
@@ -90,15 +88,19 @@ pub async fn translate(
     let body = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {
         let detail = body.chars().take(300).collect::<String>();
-        return Err(EngineError::from_http(&provider, status, &detail, retry_after));
+        return Err(EngineError::from_http(
+            &provider,
+            status,
+            &detail,
+            retry_after,
+        ));
     }
 
-    let parsed: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-        EngineError::InvalidResponse {
+    let parsed: ChatResponse =
+        serde_json::from_str(&body).map_err(|e| EngineError::InvalidResponse {
             provider: provider.into(),
             detail: e.to_string(),
-        }
-    })?;
+        })?;
     let output = parsed
         .choices
         .into_iter()
@@ -166,22 +168,19 @@ pub async fn test_connection(
             None,
         ));
     }
-    let parsed: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-        EngineError::InvalidResponse {
+    let parsed: ChatResponse =
+        serde_json::from_str(&body).map_err(|e| EngineError::InvalidResponse {
             provider: provider.into(),
             detail: e.to_string(),
-        }
-    })?;
+        })?;
     let _ = parsed
         .choices
         .first()
         .and_then(|c| c.message.content.as_deref())
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
-            EngineError::InvalidResponse {
-                provider: provider.into(),
-                detail: "测试响应为空".into(),
-            }
+        .ok_or_else(|| EngineError::InvalidResponse {
+            provider: provider.into(),
+            detail: "测试响应为空".into(),
         })?;
     Ok(format!("{provider} 连接正常"))
 }
