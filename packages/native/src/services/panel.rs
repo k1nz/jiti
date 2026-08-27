@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tauri_specta::Event;
 
-/// 面板四边圆角（产品要求 6px；透明窗由 CSS + 原生 layer 共同裁剪）。
-pub const PANEL_CORNER_RADIUS: f64 = 6.0;
+/// 面板四边圆角（12px，贴近系统浮层；透明窗由 CSS + 原生 layer 共同裁剪）。
+pub const PANEL_CORNER_RADIUS: f64 = 12.0;
 
 /// 显示后短暂忽略失焦/外点，避免 orderFront 路径上的伪 Focused(false) 立刻把窗关掉。
 const BLUR_GRACE: Duration = Duration::from_millis(250);
@@ -121,6 +121,7 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
             if follow_cursor {
                 position_near_cursor(&win);
             }
+            apply_panel_material(&win);
             apply_corner_radius(&win);
             let _ = win.set_resizable(false);
             reveal(&win);
@@ -222,15 +223,38 @@ fn apply_corner_radius(win: &WebviewWindow) {
     let _ = (win, PANEL_CORNER_RADIUS);
 }
 
+/// 主面板毛玻璃：macOS HudWindow vibrancy，Windows Acrylic（失败则 Blur）。
+/// 设置窗不走这里。失败时忽略——CSS 半透明 tint 仍可读。
+fn apply_panel_material(win: &WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    {
+        use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+        let _ = apply_vibrancy(
+            win,
+            NSVisualEffectMaterial::HudWindow,
+            Some(NSVisualEffectState::Active),
+            Some(PANEL_CORNER_RADIUS),
+        );
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use window_vibrancy::{apply_acrylic, apply_blur};
+        if apply_acrylic(win, Some((18, 18, 18, 90))).is_err() {
+            let _ = apply_blur(win, Some((18, 18, 18, 90)));
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let _ = win;
+}
+
 /// 预热态（首次页载完成后调用一次）：alpha=0 前置 + 忽略鼠标。
 /// WebKit 因 occlusion 检测被关闭 + 前置可见而维持满帧预算，
 /// JS 侧再以空转 rAF 保活（§4.6 A.1）。
 pub fn prewarm(win: &WebviewWindow) {
     let _ = win.set_resizable(false);
+    apply_panel_material(win);
     #[cfg(target_os = "macos")]
     macos::prewarm(win);
-    #[cfg(not(target_os = "macos"))]
-    let _ = win;
 }
 
 /// 跟随光标定位，并限制在包含光标的屏幕可见工作区内（§4.4 默认策略）。
@@ -361,7 +385,7 @@ pub mod macos {
         window.orderFrontRegardless();
     }
 
-    /// 透明无边框窗：把 contentView layer 裁成 6px 圆角，四边一致。
+    /// 透明无边框窗：把 contentView layer 裁成 12px 圆角，四边一致。
     pub fn apply_corner_radius(win: &WebviewWindow) {
         if MainThreadMarker::new().is_none() {
             return;

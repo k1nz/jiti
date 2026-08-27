@@ -51,8 +51,11 @@
     "kindReview": "Review"
   },
   "footer": {
-    "escTab": "Esc hide · ⌘←→ switch mode",
-    "escKeys": "Esc hide · ⌘←→ switch mode",
+    "escTab": "Esc hide · Tab switch mode",
+    "escKeys": "Esc hide · Tab switch mode",
+    "hide": "Hide",
+    "switchMode": "Switch mode",
+    "modeChord": "Tab",
     "permissionWarning": "{names} is off",
     "listJoin": ", "
   },

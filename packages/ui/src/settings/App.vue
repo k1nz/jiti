@@ -276,6 +276,7 @@ onMounted(async () => {
 <template>
   <div class="settings-page">
     <section class="settings-view">
+      <div class="settings-section">
       <div class="pane-header">
         <span>{{ t('settings.general') }}</span>
       </div>
@@ -329,19 +330,22 @@ onMounted(async () => {
       >
         <span>{{ t('settings.permissionOff') }}</span>
         <p class="muted">{{ permissionCopy(accessItem, 'hintOff') }}</p>
-        <button class="action" type="button" @click="openAccessibility">{{ t('settings.openSystem') }}</button>
+        <button class="action primary" type="button" @click="openAccessibility">{{ t('settings.openSystem') }}</button>
       </div>
 
       <p v-else-if="permissions?.platform === 'windows'" class="muted settings-note">
         {{ t('settings.windowsNote') }}
       </p>
+      </div>
 
+      <div v-if="hotkeys" class="settings-section">
       <Hotkeys
-        v-if="hotkeys"
         :snapshot="hotkeys"
         @updated="onHotkeysUpdated"
       />
+      </div>
 
+      <div class="settings-section">
       <div class="pane-header">
         <span>{{ t('settings.engines') }}</span>
         <button class="action subtle" type="button" @click="loadAll">{{ t('settings.refresh') }}</button>
@@ -366,6 +370,9 @@ onMounted(async () => {
         </label>
       </div>
 
+      </div>
+
+      <div class="settings-section">
       <div class="pane-header">
         <span>{{ t('settings.mistakes') }}</span>
       </div>
@@ -390,8 +397,9 @@ onMounted(async () => {
           <option value="archived">{{ t('status.archived') }}</option>
         </select>
       </div>
+      </div>
 
-      <div v-if="settings" class="provider-stack">
+      <div v-if="settings" class="provider-stack settings-section">
         <div v-for="provider in settings.providers" :key="provider.id" class="provider-card">
           <div class="provider-head">
             <strong>{{ provider.label }}</strong>

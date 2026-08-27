@@ -2177,6 +2177,7 @@ dependencies = [
  "tauri-specta",
  "tempfile",
  "tokio",
+ "window-vibrancy",
  "windows 0.62.2",
 ]
 

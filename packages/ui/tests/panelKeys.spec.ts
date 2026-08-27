@@ -4,9 +4,12 @@ import { isHidePanelShortcut, modeCycleDirection, shouldInterceptTab } from '../
 describe('panelKeys', () => {
   const base = { key: 'Tab', metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
 
-  it('Tab 不拦截，留给自然焦点遍历', () => {
-    expect(shouldInterceptTab(base)).toBe(false);
-    expect(shouldInterceptTab({ ...base, shiftKey: true })).toBe(false);
+  it('Tab / Shift+Tab 拦截并切模式', () => {
+    expect(shouldInterceptTab(base)).toBe(true);
+    expect(shouldInterceptTab({ ...base, shiftKey: true })).toBe(true);
+    expect(modeCycleDirection(base)).toBe(1);
+    expect(modeCycleDirection({ ...base, shiftKey: true })).toBe(-1);
+    expect(shouldInterceptTab({ ...base, metaKey: true })).toBe(false);
   });
 
   it('⌘W / Ctrl+W 隐藏面板', () => {

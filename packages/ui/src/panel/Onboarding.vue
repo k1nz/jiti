@@ -87,7 +87,7 @@ function copy(item: PermissionItem, field: 'title' | 'description' | 'hintOff' |
         {{ t('onboarding.restart') }}
       </button>
       <button
-        class="action"
+        class="action primary"
         type="button"
         :disabled="!snapshot.allRequiredGranted"
         @click="emit('start')"

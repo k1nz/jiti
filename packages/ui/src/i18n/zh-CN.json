@@ -51,8 +51,11 @@
     "kindReview": "复习"
   },
   "footer": {
-    "escTab": "Esc 隐藏 · ⌘←→ 切模式",
-    "escKeys": "Esc 隐藏 · ⌘←→ 切模式",
+    "escTab": "Esc 隐藏 · Tab 切模式",
+    "escKeys": "Esc 隐藏 · Tab 切模式",
+    "hide": "隐藏",
+    "switchMode": "切模式",
+    "modeChord": "Tab",
     "permissionWarning": "{names}未开启",
     "listJoin": "、"
   },

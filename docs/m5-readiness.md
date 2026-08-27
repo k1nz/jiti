@@ -79,7 +79,7 @@
 | 24 | 无 force-touch / 长按链接预览 | ✓ | mac | `allowsLinkPreview = false` | |
 | 25 | chrome 无拼写红线 | ✓ | both | 搜索框 `spellcheck="false"` | |
 | 26 | IME composition 正确 | 待核 | both | [`m4-ime-qa.md`](m4-ime-qa.md) | 真机，不单测冒充 |
-| 27 | Tab 全键盘可达 | ✓ | both | Tab 自然遍历；Vitest `panelKeys` | |
+| 27 | Tab 全键盘可达 | ✓ | both | Tab / Shift+Tab 切模式；Vitest `panelKeys`；Tab 条 ←/→ | |
 | 28 | 焦点环可见且平台样式 | ✓ | both | `:focus-visible` + `--j-focus-ring` | QA 再看 |
 | 29 | Esc 永远有意义 | ✓ | both | 先关弹层再隐藏；录制中忽略 | `overlays.ts` + `hotkeys.ts` |
 | 30 | 列表 type-ahead | ✓ | both | `typeahead.ts`；历史/错题列表 | |
@@ -88,13 +88,13 @@
 
 | # | 项 | 状态 | 平台 | 证据 | 说明 |
 |---|---|---|---|---|---|
-| 31 | 平台材质 | 待核 | both | mac 透明 + 圆角 layer；Win 稳妥不透明/透明底 | 不为 RC 强上 Mica |
+| 31 | 平台材质 | ✓ | both | `window-vibrancy`：mac HudWindow、Win Acrylic→Blur | 设置窗不透明；真机看毛玻璃 |
 | 32 | 深色跟随系统、无闪 | ✓ | both | `appearance.ts`；QA 切主题 | |
 | 33 | 强调色跟系统强调色 | ◯ | both | architecture §8.2 | 产品锁死 amber，不用系统强调色；可选增强后置 |
 | 34 | 系统字体，无 web font | ✓ | both | `system-ui` 栈；未打包字体 | |
 | 35 | 无 CSS 窗口阴影 | ✓ | both | `shadow: true` 交给 OS；`.shell` 无 box-shadow | 筛选弹出层阴影是组件级，不是窗口 |
-| 36 | 无 CSS 充当窗口圆角 | ✓ | both | 原生 layer `PANEL_CORNER_RADIUS`；CSS 只裁内容 | 无边框窗必须裁内容，否则漏白 |
-| 37 | 半透明区域能透出模糊 | 待核 | mac | QA | Win v1 稳妥视觉 |
+| 36 | 无 CSS 充当窗口圆角 | ✓ | both | 原生 layer `PANEL_CORNER_RADIUS` 12px；CSS 只裁内容 | 无边框窗必须裁内容，否则漏白 |
+| 37 | 半透明区域能透出模糊 | 待核 | both | CSS `--j-panel-bg` 半透明；材质见 31 | 须在 Tauri 真窗验收，浏览器看不到 OS 模糊 |
 | 38 | 再次确认无 pointer | ✓ | both | 同 21 | |
 | 39 | `prefers-reduced-motion` | ✓ | both | `style.css` 媒体查询 | |
 | 40 | 无页面/路由淡入 | ✓ | both | 无 vue-router；Tab 是切 | |

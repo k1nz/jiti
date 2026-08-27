@@ -11,6 +11,7 @@ import {
   IconPin,
   IconPinned,
   IconPlayerPlay,
+  IconSearch,
   IconSettings,
   IconTrash,
 } from '@tabler/icons-vue';
@@ -529,12 +530,14 @@ watch(
     </Onboarding>
     <template v-else>
         <header class="search-wrap">
+      <IconSearch class="search-icon" :size="18" :stroke-width="1.75" aria-hidden="true" />
       <input
         ref="searchEl"
         v-model="store.input"
         class="search"
         type="text"
         :placeholder="placeholder"
+        :aria-label="placeholder"
         spellcheck="false"
         autocomplete="off"
         @focus="onInputFocus"
@@ -546,6 +549,7 @@ watch(
     </header>
 
     <nav class="tabs" role="tablist" :aria-label="t('nav.modes')">
+      <div class="tabs-track">
       <button
         v-for="tab in TABS"
         :key="tab.key"
@@ -562,6 +566,7 @@ watch(
         <component :is="tab.icon" :size="16" :stroke-width="1.75" />
         <span>{{ t(`tabs.${tab.key}`) }}</span>
       </button>
+      </div>
     </nav>
 
     <main class="content">
@@ -689,7 +694,12 @@ watch(
         {{ permissionWarning }}
       </button>
       <span class="spacer"></span>
-      <span class="status-item mono">{{ t('footer.escKeys') }}</span>
+      <span class="status-keys">
+        <kbd>Esc</kbd>
+        <span>{{ t('footer.hide') }}</span>
+        <kbd>{{ t('footer.modeChord') }}</kbd>
+        <span>{{ t('footer.switchMode') }}</span>
+      </span>
       <button
         class="icon-btn"
         type="button"
