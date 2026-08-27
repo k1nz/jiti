@@ -20,7 +20,7 @@
         "height": 440,
         "minWidth": 360,
         "minHeight": 220,
-        "resizable": true,
+        "resizable": false,
         "maximizable": false,
         "fullscreen": false,
         "visible": false,

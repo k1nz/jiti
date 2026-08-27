@@ -4,9 +4,26 @@
 //! - 热键只触发“显示已创建的隐藏窗”，绝不按热键建窗；
 //! - 关闭 = 隐藏（alpha=0 + 忽略鼠标），不销毁进程/SQLite 之外的任何东西；
 //! - 显示不抢焦点（macOS orderFrontRegardless + Accessory 策略），不打断前台 App 输入。
+//!
+//! 失焦关闭：默认未固定时，真正失去焦点或点到其他 App 即隐藏；图钉固定后保持打开。
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tauri_specta::Event;
+
+/// 面板四边圆角（产品要求 6px；透明窗由 CSS + 原生 layer 共同裁剪）。
+pub const PANEL_CORNER_RADIUS: f64 = 6.0;
+
+/// 显示后短暂忽略失焦/外点，避免 orderFront 路径上的伪 Focused(false) 立刻把窗关掉。
+const BLUR_GRACE: Duration = Duration::from_millis(250);
+
+static PINNED: AtomicBool = AtomicBool::new(false);
+static SHOWN: AtomicBool = AtomicBool::new(false);
+static HAD_FOCUS: AtomicBool = AtomicBool::new(false);
+static IGNORE_BLUR_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 
 /// 开发期遥测（§13 感知目标：热键→弹窗暖启 <30ms）：
 /// show_panel_inner 记录发起时刻，macos::reveal 翻转 alpha 时打印耗时。
@@ -104,7 +121,10 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
             if follow_cursor {
                 position_near_cursor(&win);
             }
+            apply_corner_radius(&win);
+            let _ = win.set_resizable(false);
             reveal(&win);
+            mark_shown();
         }
         let _ = crate::services::selection::HotkeyPressedEvent {
             mode: mode.as_str().to_string(),
@@ -123,6 +143,7 @@ pub fn hide_panel(app: &AppHandle) {
     let app = app.clone();
     let inner = app.clone();
     let _ = app.run_on_main_thread(move || {
+        mark_hidden();
         if let Some(win) = inner.get_webview_window("main") {
             conceal(&win);
         }
@@ -130,10 +151,82 @@ pub fn hide_panel(app: &AppHandle) {
     });
 }
 
+/// 用户图钉：固定后失焦 / 点到其他 App 不再自动隐藏。
+pub fn is_pinned() -> bool {
+    PINNED.load(Ordering::SeqCst)
+}
+
+pub fn set_pinned(pinned: bool) -> bool {
+    PINNED.store(pinned, Ordering::SeqCst);
+    pinned
+}
+
+/// 窗口焦点变化：从未成为 key 的伪失焦忽略；固定态不关。
+pub fn on_focus_changed(app: &AppHandle, focused: bool) {
+    if focused {
+        HAD_FOCUS.store(true, Ordering::SeqCst);
+        return;
+    }
+    let had = HAD_FOCUS.swap(false, Ordering::SeqCst);
+    if should_dismiss_on_blur(
+        SHOWN.load(Ordering::SeqCst),
+        is_pinned(),
+        had,
+        in_blur_grace(),
+    ) {
+        hide_panel(app);
+    }
+}
+
+fn mark_shown() {
+    SHOWN.store(true, Ordering::SeqCst);
+    arm_blur_grace();
+}
+
+fn mark_hidden() {
+    SHOWN.store(false, Ordering::SeqCst);
+    HAD_FOCUS.store(false, Ordering::SeqCst);
+}
+
+fn arm_blur_grace() {
+    if let Ok(mut g) = IGNORE_BLUR_UNTIL.lock() {
+        *g = Some(Instant::now() + BLUR_GRACE);
+    }
+}
+
+fn in_blur_grace() -> bool {
+    IGNORE_BLUR_UNTIL
+        .lock()
+        .ok()
+        .and_then(|g| *g)
+        .is_some_and(|until| Instant::now() < until)
+}
+
+pub(crate) fn should_dismiss_on_blur(
+    shown: bool,
+    pinned: bool,
+    had_focus: bool,
+    in_grace: bool,
+) -> bool {
+    shown && !pinned && had_focus && !in_grace
+}
+
+pub(crate) fn should_dismiss_on_click_outside(shown: bool, pinned: bool, in_grace: bool) -> bool {
+    shown && !pinned && !in_grace
+}
+
+fn apply_corner_radius(win: &WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    macos::apply_corner_radius(win);
+    #[cfg(not(target_os = "macos"))]
+    let _ = (win, PANEL_CORNER_RADIUS);
+}
+
 /// 预热态（首次页载完成后调用一次）：alpha=0 前置 + 忽略鼠标。
 /// WebKit 因 occlusion 检测被关闭 + 前置可见而维持满帧预算，
 /// JS 侧再以空转 rAF 保活（§4.6 A.1）。
 pub fn prewarm(win: &WebviewWindow) {
+    let _ = win.set_resizable(false);
     #[cfg(target_os = "macos")]
     macos::prewarm(win);
     #[cfg(not(target_os = "macos"))]
@@ -178,7 +271,8 @@ pub mod macos {
     use objc2::MainThreadMarker;
     use objc2::{msg_send, sel};
     use objc2_app_kit::{
-        NSApplication, NSApplicationActivationPolicy, NSEvent, NSScreen, NSWindow,
+        NSApplication, NSApplicationActivationPolicy, NSEvent, NSScreen, NSView, NSWindow,
+        NSWindowStyleMask,
     };
     use tauri::{LogicalPosition, Manager, WebviewWindow};
 
@@ -192,12 +286,13 @@ pub mod macos {
     }
 
     /// 无 Dock 图标后台常驻（NSApplicationActivationPolicyAccessory）。
-    pub fn apply_activation_policy(_app: &tauri::AppHandle) {
+    pub fn apply_activation_policy(app: &tauri::AppHandle) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
         NSApplication::sharedApplication(mtm)
             .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+        install_outside_click_dismiss(app);
     }
 
     /// 架构决策说明（§4.6 A.1 在 macOS 13 的落地）：
@@ -224,9 +319,73 @@ pub mod macos {
         let Some(window) = window(win) else {
             return;
         };
+        apply_corner_radius(win);
+        disable_resize(window);
         window.setAlphaValue(0.0);
         window.setIgnoresMouseEvents(true);
         window.orderFrontRegardless();
+    }
+
+    /// 透明无边框窗：把 contentView layer 裁成 6px 圆角，四边一致。
+    pub fn apply_corner_radius(win: &WebviewWindow) {
+        if MainThreadMarker::new().is_none() {
+            return;
+        }
+        let Some(ns_window) = window(win) else {
+            return;
+        };
+        let Some(content) = ns_window.contentView() else {
+            return;
+        };
+        content.setWantsLayer(true);
+        unsafe {
+            let view = &*content as *const NSView as *mut AnyObject;
+            let layer: *mut AnyObject = msg_send![view, layer];
+            if !layer.is_null() {
+                let _: () = msg_send![layer, setCornerRadius: super::PANEL_CORNER_RADIUS];
+                let _: () = msg_send![layer, setMasksToBounds: true];
+            }
+        }
+        ns_window.invalidateShadow();
+    }
+
+    fn disable_resize(window: &NSWindow) {
+        window.setStyleMask(window.styleMask().difference(NSWindowStyleMask::Resizable));
+        window.setMovable(true);
+    }
+
+    /// 点到其他 App 时关闭（面板默认不抢焦点，仅靠 Focused(false) 不够）。
+    pub fn install_outside_click_dismiss(app: &tauri::AppHandle) {
+        use std::ptr::NonNull;
+
+        use objc2_app_kit::NSEventMask;
+
+        static INSTALLED: AtomicBool = AtomicBool::new(false);
+        if INSTALLED.load(Ordering::SeqCst) || MainThreadMarker::new().is_none() {
+            return;
+        }
+
+        let app = app.clone();
+        let block = block2::RcBlock::new(move |_event: NonNull<NSEvent>| {
+            if !super::should_dismiss_on_click_outside(
+                super::SHOWN.load(Ordering::SeqCst),
+                super::is_pinned(),
+                super::in_blur_grace(),
+            ) {
+                return;
+            }
+            super::hide_panel(&app);
+        });
+        let Some(monitor) = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(
+            NSEventMask::LeftMouseDown.union(NSEventMask::RightMouseDown),
+            &block,
+        ) else {
+            return;
+        };
+        INSTALLED.store(true, Ordering::SeqCst);
+        // AppKit 监视器持有 handler；两者都要活过进程寿命，且 Retained 不是 Sync。
+        std::mem::forget(monitor);
+        std::mem::forget(block);
     }
 
     /// 显示：orderFrontRegardless（不激活）+ 首帧同步后再把 alpha 翻到 1（§4.6 A.2）。
@@ -237,6 +396,7 @@ pub mod macos {
         let Some(window) = window(win) else {
             return;
         };
+        disable_resize(window);
         window.orderFrontRegardless();
 
         // 首帧同步：下一帧呈现后执行 block（私有但稳定 ~10 年的 API）。
@@ -426,5 +586,22 @@ mod tests {
         assert!(Mode::Translate.captures_selection());
         assert!(Mode::Grammar.captures_selection());
         assert!(!Mode::Panel.captures_selection());
+    }
+
+    #[test]
+    fn blur_hides_only_after_real_focus_when_unpinned() {
+        assert!(should_dismiss_on_blur(true, false, true, false));
+        assert!(!should_dismiss_on_blur(true, true, true, false));
+        assert!(!should_dismiss_on_blur(false, false, true, false));
+        assert!(!should_dismiss_on_blur(true, false, false, false));
+        assert!(!should_dismiss_on_blur(true, false, true, true));
+    }
+
+    #[test]
+    fn click_outside_hides_when_shown_and_unpinned() {
+        assert!(should_dismiss_on_click_outside(true, false, false));
+        assert!(!should_dismiss_on_click_outside(true, true, false));
+        assert!(!should_dismiss_on_click_outside(false, false, false));
+        assert!(!should_dismiss_on_click_outside(true, false, true));
     }
 }

@@ -18,6 +18,7 @@ export const MODE_ORDER: readonly PanelMode[] = [
 export const usePanelStore = defineStore('panel', () => {
   const activeMode = ref<PanelMode>('translate');
   const visible = ref(false);
+  const pinned = ref(false);
   const input = ref('');
   const lastHotkey = ref<HotkeyKind>('panel');
 
@@ -39,6 +40,11 @@ export const usePanelStore = defineStore('panel', () => {
     visible.value = showing;
   }
 
+  /** 图钉固定：失焦不再自动隐藏。 */
+  function setPinned(value: boolean) {
+    pinned.value = value;
+  }
+
   /** Tab 切模式：循环向。 */
   function cycleMode(direction: 1 | -1) {
     const i = MODE_ORDER.indexOf(activeMode.value);
@@ -53,11 +59,13 @@ export const usePanelStore = defineStore('panel', () => {
   return {
     activeMode,
     visible,
+    pinned,
     input,
     lastHotkey,
     setActiveMode,
     onHotkey,
     onVisibility,
+    setPinned,
     cycleMode,
     getTabOrder,
   };

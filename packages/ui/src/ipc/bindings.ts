@@ -7,6 +7,8 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	showPopup: (mode: string | null) => typedError<null, string>(__TAURI_INVOKE("show_popup", { mode })),
 	hidePopup: () => typedError<null, string>(__TAURI_INVOKE("hide_popup")),
+	setPanelPinned: (pinned: boolean) => __TAURI_INVOKE<boolean>("set_panel_pinned", { pinned }),
+	panelPinned: () => __TAURI_INVOKE<boolean>("panel_pinned"),
 	settingsGet: (key: string) => typedError<"Null" | boolean | number | null | string | SettingsValue[] | ([string, SettingsValue])[] | null, string>(__TAURI_INVOKE("settings_get", { key })),
 	settingsSet: (key: string, value: SettingsValue) => typedError<null, string>(__TAURI_INVOKE("settings_set", { key, value })),
 	getSelectedText: () => __TAURI_INVOKE<SelectedText>("get_selected_text"),

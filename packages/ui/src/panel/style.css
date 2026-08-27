@@ -73,19 +73,33 @@ body {
   color: var(--j-fg);
 }
 
-/* 面板本体圆角交给系统窗口（§8.2：不自定义窗口 border-radius / box-shadow）。
-   macOS 由窗口服务器裁圆角，Windows 由 OS 似的形状裁。 */
+/* 面板 6px 圆角。Tauri 2.11：data-tauri-drag-region 默认只认「点在该节点本身」；
+   子节点铺满窗口时必须用 deep，空白处才能拖动位移。按钮/输入仍会拦住拖拽。 */
 .shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--j-bg);
   overflow: hidden;
-  -webkit-app-region: drag; /* 无边框窗口：拖空白处移动 */
+  border-radius: 6px;
 }
 
-.chrome {
-  -webkit-app-region: no-drag; /* chrome 区可交互，不参与拖拽 */
+.content,
+.onboarding-body,
+.search,
+.tab,
+.action,
+.icon-btn,
+.pin-btn,
+.native-select,
+.text-input,
+button,
+input,
+select,
+textarea,
+a {
+  -webkit-app-region: no-drag;
 }
 
 /* ── 输入框：padding 放在 header 上，避免 width:100% + 水平 margin 撑破窗口 ── */
@@ -753,6 +767,7 @@ body {
 .shell {
   height: 100%;
   background: var(--j-bg);
+  border-radius: 6px;
 }
 
 .search-wrap {
@@ -1072,8 +1087,8 @@ body {
 }
 
 .status {
-  min-height: 31px;
-  padding: 7px 18px;
+  min-height: 32px;
+  padding: 4px 12px 4px 16px;
   background: var(--j-surface);
   border-top-color: var(--j-border);
   color: var(--j-muted);
@@ -1100,6 +1115,38 @@ body {
   color: var(--j-fg);
 }
 
+.pin-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 0 0 2px;
+  padding: 0;
+  line-height: 0;
+  color: var(--j-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.pin-btn:hover {
+  color: var(--j-fg);
+  background: var(--j-hover);
+}
+
+.pin-btn.active {
+  color: var(--j-accent);
+  background: transparent;
+}
+
+.pin-btn:focus-visible {
+  outline: 2px solid var(--j-focus-ring);
+  outline-offset: 1px;
+}
+
 .settings-note {
   margin: 0 0 12px;
   font-size: 12px;
@@ -1108,7 +1155,11 @@ body {
 
 /* ── 首次权限引导：占满面板，不是遮罩对话框（§7.2 / 附录 A） ── */
 .onboarding {
-  -webkit-app-region: drag;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .onboarding-head {
@@ -1217,7 +1268,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px 14px;
+  padding: 10px 10px 10px 16px;
   border-top: 1px solid var(--j-border);
   background: var(--j-surface);
 }

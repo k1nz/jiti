@@ -20,8 +20,8 @@ function itemIcon(item: PermissionItem) {
 </script>
 
 <template>
-  <div class="shell onboarding">
-    <header class="onboarding-head chrome">
+  <div class="onboarding">
+    <header class="onboarding-head">
       <p class="onboarding-kicker">首次使用</p>
       <h1>开启必要权限</h1>
       <p class="onboarding-lead">
@@ -29,7 +29,7 @@ function itemIcon(item: PermissionItem) {
       </p>
     </header>
 
-    <main class="onboarding-body chrome">
+    <main class="onboarding-body">
       <article
         v-for="item in snapshot.items"
         :key="item.id"
@@ -66,7 +66,7 @@ function itemIcon(item: PermissionItem) {
       </ol>
     </main>
 
-    <footer class="onboarding-foot chrome">
+    <footer class="onboarding-foot">
       <button class="action subtle" type="button" @click="emit('skip')">稍后再说</button>
       <span class="spacer"></span>
       <button class="action subtle" type="button" @click="emit('recheck')">
@@ -89,6 +89,7 @@ function itemIcon(item: PermissionItem) {
       >
         开始使用
       </button>
+      <slot name="pin" />
     </footer>
   </div>
 </template>

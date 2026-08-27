@@ -17,3 +17,15 @@ pub fn hide_popup(app: AppHandle) -> Result<(), String> {
     panel::hide_panel(&app);
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_panel_pinned(pinned: bool) -> bool {
+    panel::set_pinned(pinned)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn panel_pinned() -> bool {
+    panel::is_pinned()
+}

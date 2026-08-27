@@ -12,6 +12,8 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
         .commands(collect_commands![
             crate::commands::panel::show_popup,
             crate::commands::panel::hide_popup,
+            crate::commands::panel::set_panel_pinned,
+            crate::commands::panel::panel_pinned,
             crate::commands::settings::settings_get,
             crate::commands::settings::settings_set,
             crate::commands::selection::get_selected_text,
@@ -69,7 +71,7 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 ///
 /// §3.5 要求的版本化常量：破坏性变更必升。M0 暂无消费方，M1 接入 IPC 日志时启用。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 #[cfg(test)]
 mod tests {

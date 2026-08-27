@@ -65,6 +65,14 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::Focused(focused) = event {
+                services::panel::on_focus_changed(window.app_handle(), *focused);
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building jiti tauri application");
 

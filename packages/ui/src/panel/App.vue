@@ -7,6 +7,8 @@ import {
   IconHistory,
   IconLanguage,
   IconNotebook,
+  IconPin,
+  IconPinned,
   IconPlayerPlay,
   IconSettings,
   IconTrash,
@@ -434,6 +436,15 @@ const placeholder = computed(() => {
   return TABS.find((tab) => tab.key === store.activeMode)?.label ?? '输入';
 });
 
+async function togglePin() {
+  const next = !store.pinned;
+  try {
+    store.setPinned(await commands.setPanelPinned(next));
+  } catch {
+    /* 保持当前固定态 */
+  }
+}
+
 async function onKeydown(e: KeyboardEvent) {
   if (isRecordingHotkey.value) {
     e.preventDefault();
@@ -501,6 +512,11 @@ onMounted(async () => {
     if (store.activeMode === 'translate') translateStatus.value = 'error';
   });
   await loadSettings();
+  try {
+    store.setPinned(await commands.panelPinned());
+  } catch {
+    store.setPinned(false);
+  }
   if (permissions.value?.needsOnboarding) {
     showOnboarding.value = true;
     startPermissionPoll();
@@ -536,17 +552,33 @@ watch(
 </script>
 
 <template>
-  <Onboarding
-    v-if="showOnboarding && permissions"
-    :snapshot="permissions"
-    @enable="enablePermission"
-    @skip="finishOnboarding"
-    @start="finishOnboarding"
-    @restart="restartApp"
-    @recheck="refreshPermissions"
-  />
-  <div v-else class="shell" @click="onShellClick">
-        <header class="chrome search-wrap">
+  <div class="shell" data-tauri-drag-region="deep" @click="onShellClick">
+    <Onboarding
+      v-if="showOnboarding && permissions"
+      :snapshot="permissions"
+      @enable="enablePermission"
+      @skip="finishOnboarding"
+      @start="finishOnboarding"
+      @restart="restartApp"
+      @recheck="refreshPermissions"
+    >
+      <template #pin>
+        <button
+          class="pin-btn"
+          type="button"
+          :class="{ active: store.pinned }"
+          :aria-pressed="store.pinned"
+          :aria-label="store.pinned ? '取消固定窗口' : '固定窗口'"
+          :title="store.pinned ? '取消固定' : '固定窗口，失去焦点时保持打开'"
+          @click.stop="togglePin"
+        >
+          <IconPinned v-if="store.pinned" :size="13" :stroke-width="2" />
+          <IconPin v-else :size="13" :stroke-width="2" />
+        </button>
+      </template>
+    </Onboarding>
+    <template v-else>
+        <header class="search-wrap">
       <input
         ref="searchEl"
         v-model="store.input"
@@ -561,7 +593,7 @@ watch(
       />
     </header>
 
-    <nav class="tabs chrome" role="tablist" aria-label="模式">
+    <nav class="tabs" role="tablist" aria-label="模式">
       <button
         v-for="tab in TABS"
         :key="tab.key"
@@ -614,12 +646,12 @@ watch(
           <span class="spinner" aria-hidden="true"></span>
           <span>正在翻译</span>
         </div>
-        <div v-else-if="translateStatus === 'error' && translateError" class="error-box" aria-live="assertive">
+        <div v-else-if="translateStatus === 'error' && translateError" class="error-box" data-tauri-drag-region="false" aria-live="assertive">
           <div class="error-title">{{ translateError.code }} · {{ translateError.message }}</div>
           <div v-if="translateError.hint" class="muted">{{ translateError.hint }}</div>
           <code class="copyable">{{ translateError.copyable }}</code>
         </div>
-        <div v-else-if="translateResult" class="result-box">
+        <div v-else-if="translateResult" class="result-box" data-tauri-drag-region="false">
           <p class="output">{{ translateResult.output }}</p>
           <div class="meta">
             <span>{{ translateResult.engine }}</span>
@@ -660,7 +692,7 @@ watch(
           <span>暂无历史</span>
         </div>
         <ul v-else class="history-list">
-          <li v-for="entry in history" :key="entry.id" class="history-row">
+          <li v-for="entry in history" :key="entry.id" class="history-row" data-tauri-drag-region="false">
             <div class="history-input">{{ entry.input }}</div>
             <div class="history-output">{{ entry.output }}</div>
             <div class="meta">
@@ -717,7 +749,7 @@ watch(
           </label>
         </div>
 
-        <div v-if="settings" class="provider-stack">
+        <div v-if="settings" class="provider-stack" data-tauri-drag-region="false">
           <div v-for="provider in settings.providers" :key="provider.id" class="provider-card">
             <div class="provider-head">
               <strong>{{ provider.label }}</strong>
@@ -793,7 +825,7 @@ watch(
       </div>
     </main>
 
-    <footer class="status chrome">
+    <footer class="status">
       <span class="status-item">
         <span class="dot" aria-hidden="true"></span>
         {{ statusText }}
@@ -808,6 +840,19 @@ watch(
       </button>
       <span class="spacer"></span>
       <span class="status-item mono">Esc 隐藏 · Tab 切模式</span>
+      <button
+        class="pin-btn"
+        type="button"
+        :class="{ active: store.pinned }"
+        :aria-pressed="store.pinned"
+        :aria-label="store.pinned ? '取消固定窗口' : '固定窗口'"
+        :title="store.pinned ? '取消固定' : '固定窗口，失去焦点时保持打开'"
+        @click.stop="togglePin"
+      >
+        <IconPinned v-if="store.pinned" :size="13" :stroke-width="2" />
+        <IconPin v-else :size="13" :stroke-width="2" />
+      </button>
     </footer>
+    </template>
   </div>
 </template>

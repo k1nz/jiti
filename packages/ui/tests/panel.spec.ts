@@ -52,4 +52,13 @@ describe('panel store', () => {
     store.onVisibility(true);
     expect(store.visible).toBe(true);
   });
+
+  it('图钉固定态默认为关，可切换', () => {
+    const store = usePanelStore();
+    expect(store.pinned).toBe(false);
+    store.setPinned(true);
+    expect(store.pinned).toBe(true);
+    store.setPinned(false);
+    expect(store.pinned).toBe(false);
+  });
 });

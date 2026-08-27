@@ -60,6 +60,7 @@ const statusLabel = computed(() => {
     <div
       v-else-if="grammar.status === 'error' && grammar.error"
       class="error-box"
+      data-tauri-drag-region="false"
       aria-live="assertive"
     >
       <div class="error-title">{{ grammar.error.code }} · {{ grammar.error.message }}</div>
@@ -67,7 +68,7 @@ const statusLabel = computed(() => {
       <code class="copyable">{{ grammar.error.copyable }}</code>
     </div>
 
-    <div v-else-if="showResults" class="grammar-results" aria-live="polite">
+    <div v-else-if="showResults" class="grammar-results" data-tauri-drag-region="false" aria-live="polite">
       <p v-if="grammar.overall" class="grammar-overall">{{ grammar.overall }}</p>
       <p v-if="grammar.correctedText" class="grammar-corrected">{{ grammar.correctedText }}</p>
       <p
