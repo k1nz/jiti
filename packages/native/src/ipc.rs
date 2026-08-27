@@ -14,6 +14,9 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::commands::panel::hide_popup,
             crate::commands::panel::set_panel_pinned,
             crate::commands::panel::panel_pinned,
+            crate::commands::prefs::preferences_snapshot,
+            crate::commands::prefs::preferences_update,
+            crate::commands::prefs::open_settings,
             crate::commands::settings::settings_get,
             crate::commands::settings::settings_set,
             crate::commands::selection::get_selected_text,
@@ -50,6 +53,7 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::providers::error::EngineErrorEvent,
             crate::services::selection::HotkeyPressedEvent,
             crate::services::selection::CaptureChangedEvent,
+            crate::services::prefs::PreferencesChangedEvent,
         ])
 }
 
@@ -77,9 +81,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 /// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。M3 将 grammar_check 出参改为 GrammarCheckOutcome，并新增 mistakes_*。
+/// §3.5 要求的版本化常量：破坏性变更必升。M4 新增 preferences_* / open_settings 与 preferences://changed。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 #[cfg(test)]
 mod tests {

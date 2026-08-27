@@ -9,7 +9,7 @@ use serde_json::json;
 use super::sse::{fold_openai_sse, LineAssembler};
 use super::{
     parse_ndjson_line, GrammarDraft, GrammarProgressEvent, GrammarResult, NdjsonError,
-    NdjsonRecord, ParseFail, PROMPT_VERSION,
+    NdjsonRecord, ParseFail,
 };
 use crate::providers::llm::completions_url;
 use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
@@ -76,7 +76,7 @@ struct StrictGrammarJson {
 
 #[cfg(test)]
 pub fn prompt_version() -> &'static str {
-    PROMPT_VERSION
+    super::PROMPT_VERSION
 }
 
 pub async fn check(

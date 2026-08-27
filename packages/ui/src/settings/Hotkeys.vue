@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { commands, type HotkeyId, type HotkeysSnapshot } from '../ipc/bindings';
+import { unwrap } from '../ipc/unwrap';
 import { acceleratorFromCombo, isRecordingHotkey } from '../hotkeys';
 
 const props = defineProps<{
@@ -11,20 +13,18 @@ const emit = defineEmits<{
   updated: [snapshot: HotkeysSnapshot];
 }>();
 
+const { t } = useI18n();
 const recording = ref<HotkeyId | null>(null);
 const error = ref<string | null>(null);
 const armed = ref(false);
 let pendingAccelerator: string | null = null;
 let listening = false;
 
-function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
-  return promise.then((result) => {
-    if (result.status === 'ok') return result.data;
-    throw result.error;
-  });
-}
-
 const unregistered = computed(() => props.snapshot.bindings.filter((bind) => !bind.registered));
+
+function titleFor(id: HotkeyId) {
+  return t(`hotkeys.${id}`);
+}
 
 function attachListeners() {
   if (listening) return;
@@ -151,32 +151,31 @@ onBeforeUnmount(() => {
 <template>
   <div class="hotkeys">
     <div class="pane-header">
-      <span>快捷键</span>
-      <button class="action subtle" type="button" @click="reset">恢复默认</button>
+      <span>{{ t('hotkeys.title') }}</span>
+      <button class="action subtle" type="button" @click="reset">{{ t('hotkeys.reset') }}</button>
     </div>
-    <p class="muted settings-note">点击组合键，再按下新的快捷键。Esc 取消。</p>
+    <p class="muted settings-note">{{ t('hotkeys.note') }}</p>
     <div
       v-for="bind in snapshot.bindings"
       :key="bind.id"
       class="hotkey-row"
     >
-      <span class="hotkey-title">{{ bind.title }}</span>
+      <span class="hotkey-title">{{ titleFor(bind.id) }}</span>
       <button
         class="hotkey-bind"
         :class="{ recording: recording === bind.id, warn: !bind.registered }"
         type="button"
         tabindex="0"
-        :aria-label="`修改${bind.title}快捷键，当前 ${bind.display}`"
+        :aria-label="t('hotkeys.aria', { title: titleFor(bind.id), display: bind.display })"
         :aria-pressed="recording === bind.id"
         @click="startRecord(bind.id, $event)"
       >
-        {{ recording === bind.id ? '按下组合键…' : bind.display }}
+        {{ recording === bind.id ? t('hotkeys.press') : bind.display }}
       </button>
     </div>
     <p v-if="error" class="hotkey-warn">{{ error }}</p>
     <p v-else-if="unregistered.length" class="hotkey-warn">
-      {{ unregistered.map((bind) => bind.display).join('、') }}
-      未能注册，可能已被其他程序占用。
+      {{ t('hotkeys.unregistered', { keys: unregistered.map((bind) => bind.display).join(t('footer.listJoin')) }) }}
     </p>
   </div>
 </template>

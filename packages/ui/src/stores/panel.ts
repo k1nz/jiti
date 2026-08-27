@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-/** 面板五个模式 Tab（§8.3）。 */
-export type PanelMode = 'translate' | 'grammar' | 'mistakes' | 'history' | 'settings';
+/** 面板四个模式 Tab（§8.3）；设置已拆成独立窗口。 */
+export type PanelMode = 'translate' | 'grammar' | 'mistakes' | 'history';
 
 /** 全局热键直达的目的（统一面板 = 保留上次模式）。 */
 export type HotkeyKind = 'translate' | 'grammar' | 'panel';
@@ -12,7 +12,6 @@ export const MODE_ORDER: readonly PanelMode[] = [
   'grammar',
   'mistakes',
   'history',
-  'settings',
 ];
 
 export const usePanelStore = defineStore('panel', () => {

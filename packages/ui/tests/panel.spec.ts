@@ -9,7 +9,7 @@ describe('panel store', () => {
 
   it('翻译热键直达翻译模式并唤起面板', () => {
     const store = usePanelStore();
-    store.setActiveMode('settings');
+    store.setActiveMode('history');
     store.onHotkey('translate');
     expect(store.activeMode).toBe('translate');
     expect(store.visible).toBe(true);
@@ -36,13 +36,13 @@ describe('panel store', () => {
     store.cycleMode(1);
     expect(store.activeMode).toBe('grammar');
     store.cycleMode(1);
+    expect(store.activeMode).toBe('mistakes');
     store.cycleMode(1);
-    store.cycleMode(1);
-    expect(store.activeMode).toBe('settings');
+    expect(store.activeMode).toBe('history');
     store.cycleMode(1);
     expect(store.activeMode).toBe('translate');
     store.cycleMode(-1);
-    expect(store.activeMode).toBe('settings');
+    expect(store.activeMode).toBe('history');
   });
 
   it('visibility 事件同步显隐状态', () => {

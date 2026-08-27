@@ -1,13 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { GrammarError } from '../../ipc/bindings';
-
-const TYPE_LABEL: Record<GrammarError['type'], string> = {
-  grammar: '语法',
-  spelling: '拼写',
-  punctuation: '标点',
-  word_choice: '用词',
-  style: '风格',
-};
 
 export type CollectState = 'pending' | 'collected' | 'idle' | 'hidden';
 
@@ -20,15 +13,17 @@ const emit = defineEmits<{
   collect: [];
   uncollect: [];
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
   <article
     class="grammar-card"
     :class="`sev-${error.severity}`"
-    :aria-label="`${TYPE_LABEL[error.type]} · ${error.severity}`"
+    :aria-label="`${t(`errorType.${error.type}`)} · ${error.severity}`"
   >
-    <span class="grammar-card-type">{{ TYPE_LABEL[error.type] }}</span>
+    <span class="grammar-card-type">{{ t(`errorType.${error.type}`) }}</span>
     <div class="grammar-card-pair">
       <span class="grammar-from">{{ error.fragment }}</span>
       <span class="grammar-arrow" aria-hidden="true">→</span>
@@ -45,11 +40,11 @@ const emit = defineEmits<{
         type="button"
         disabled
       >
-        待完成
+        {{ t('mistakes.pending') }}
       </button>
       <template v-else-if="collectState === 'collected'">
-        <span class="collect-on">已收录</span>
-        <button class="action subtle" type="button" @click="emit('uncollect')">取消收录</button>
+        <span class="collect-on">{{ t('mistakes.collected') }}</span>
+        <button class="action subtle" type="button" @click="emit('uncollect')">{{ t('mistakes.uncollect') }}</button>
       </template>
       <button
         v-else
@@ -57,7 +52,7 @@ const emit = defineEmits<{
         type="button"
         @click="emit('collect')"
       >
-        收录错题
+        {{ t('mistakes.collect') }}
       </button>
     </div>
   </article>

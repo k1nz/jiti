@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { IconAccessible, IconCircleCheck, IconRefresh } from '@tabler/icons-vue';
+import { useI18n } from 'vue-i18n';
 import type { PermissionItem, PermissionsSnapshot } from '../ipc/bindings';
 
 defineProps<{
@@ -14,19 +15,23 @@ const emit = defineEmits<{
   recheck: [];
 }>();
 
+const { t } = useI18n();
+
 function itemIcon(item: PermissionItem) {
   return item.id === 'accessibility' ? IconAccessible : IconCircleCheck;
+}
+
+function copy(item: PermissionItem, field: 'title' | 'description' | 'hintOff' | 'hintOn') {
+  return t(`permissions.${item.id}.${field}`);
 }
 </script>
 
 <template>
   <div class="onboarding">
     <header class="onboarding-head">
-      <p class="onboarding-kicker">首次使用</p>
-      <h1>开启必要权限</h1>
-      <p class="onboarding-lead">
-        Jiti 需要读取你在其他应用中选中的文字，才能一键翻译。授权只需一次，之后可随时在设置里查看。
-      </p>
+      <p class="onboarding-kicker">{{ t('onboarding.kicker') }}</p>
+      <h1>{{ t('onboarding.title') }}</h1>
+      <p class="onboarding-lead">{{ t('onboarding.lead') }}</p>
     </header>
 
     <main class="onboarding-body">
@@ -41,13 +46,13 @@ function itemIcon(item: PermissionItem) {
         </span>
         <div class="perm-copy">
           <div class="perm-title">
-            <strong>{{ item.title }}</strong>
+            <strong>{{ copy(item, 'title') }}</strong>
             <span class="perm-badge" :class="{ on: item.granted }">
-              {{ item.granted ? '已开启' : '未开启' }}
+              {{ item.granted ? t('onboarding.granted') : t('onboarding.missing') }}
             </span>
           </div>
-          <p>{{ item.description }}</p>
-          <p v-if="item.hint" class="muted">{{ item.hint }}</p>
+          <p>{{ copy(item, 'description') }}</p>
+          <p class="muted">{{ item.granted ? copy(item, 'hintOn') : copy(item, 'hintOff') }}</p>
         </div>
         <button
           v-if="!item.granted"
@@ -55,23 +60,23 @@ function itemIcon(item: PermissionItem) {
           type="button"
           @click="emit('enable', item.id)"
         >
-          去开启
+          {{ t('onboarding.enable') }}
         </button>
       </article>
 
       <ol v-if="!snapshot.allRequiredGranted" class="onboarding-steps">
-        <li>点击「去开启」，在系统设置的列表里找到 Jiti</li>
-        <li>打开右侧开关</li>
-        <li>回到这里，状态会自动更新</li>
+        <li>{{ t('onboarding.step1') }}</li>
+        <li>{{ t('onboarding.step2') }}</li>
+        <li>{{ t('onboarding.step3') }}</li>
       </ol>
     </main>
 
     <footer class="onboarding-foot">
-      <button class="action subtle" type="button" @click="emit('skip')">稍后再说</button>
+      <button class="action subtle" type="button" @click="emit('skip')">{{ t('onboarding.later') }}</button>
       <span class="spacer"></span>
       <button class="action subtle" type="button" @click="emit('recheck')">
         <IconRefresh :size="14" :stroke-width="1.75" />
-        重新检测
+        {{ t('onboarding.recheck') }}
       </button>
       <button
         v-if="snapshot.allRequiredGranted"
@@ -79,7 +84,7 @@ function itemIcon(item: PermissionItem) {
         type="button"
         @click="emit('restart')"
       >
-        重启应用
+        {{ t('onboarding.restart') }}
       </button>
       <button
         class="action"
@@ -87,7 +92,7 @@ function itemIcon(item: PermissionItem) {
         :disabled="!snapshot.allRequiredGranted"
         @click="emit('start')"
       >
-        开始使用
+        {{ t('onboarding.start') }}
       </button>
       <slot name="pin" />
     </footer>

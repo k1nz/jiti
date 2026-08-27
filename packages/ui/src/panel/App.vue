@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   IconAbc,
@@ -17,13 +18,8 @@ import { commands, events } from '../ipc/bindings';
 import type {
   EngineErrorPayload,
   HistoryEntry,
-  PermissionItem,
   PermissionsSnapshot,
-  ProviderConfig_Serialize,
-  ProviderView,
-  ProvidersConfig_Serialize,
   ProvidersSnapshot,
-  TestProviderResult,
   TranslateRequest_Deserialize,
   HotkeysSnapshot,
   TranslateResult,
@@ -39,6 +35,9 @@ import {
   shouldAutoSubmitOnCapture,
 } from '../capture';
 import { isSelectableTextTarget, shouldFocusSearchOnShellClick } from '../focus';
+import { formatTime } from '../format';
+import { shouldHandlePanelShortcut } from '../ime';
+import { unwrap } from '../ipc/unwrap';
 import {
   guessTarget,
   languagePairLabel,
@@ -50,23 +49,24 @@ import { isRecordingHotkey, shouldHidePanelOnEscape } from '../hotkeys';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 import { useGrammarStore } from '../stores/grammar';
-import Hotkeys from './Hotkeys.vue';
 import Onboarding from './Onboarding.vue';
 import GrammarView from './components/GrammarView.vue';
 import MistakesView from './components/MistakesView.vue';
-import { useMistakesStore } from '../stores/mistakes';
 
+const { t, locale } = useI18n();
 const store = usePanelStore();
 const grammar = useGrammarStore();
-const mistakes = useMistakesStore();
 const searchEl = ref<HTMLInputElement | null>(null);
 
-const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = [
-  { key: 'translate', label: '翻译', icon: IconLanguage },
-  { key: 'grammar', label: '语法', icon: IconAbc },
-  { key: 'mistakes', label: '错题本', icon: IconNotebook },
-  { key: 'history', label: '历史', icon: IconHistory },
-  { key: 'settings', label: '设置', icon: IconSettings },
+function tx(key: string, values?: Record<string, unknown>) {
+  return values ? String(t(key, values)) : String(t(key));
+}
+
+const TABS: ReadonlyArray<{ key: PanelMode; icon: Component }> = [
+  { key: 'translate', icon: IconLanguage },
+  { key: 'grammar', icon: IconAbc },
+  { key: 'mistakes', icon: IconNotebook },
+  { key: 'history', icon: IconHistory },
 ];
 
 const source = ref<SourceChoice>('auto');
@@ -79,12 +79,10 @@ const settings = ref<ProvidersSnapshot | null>(null);
 const hotkeys = ref<HotkeysSnapshot | null>(null);
 const permissions = ref<PermissionsSnapshot | null>(null);
 const showOnboarding = ref(false);
-const keyInputs = ref<Record<string, string>>({});
-const testResults = ref<Record<string, TestProviderResult | null>>({});
-const testing = ref<Record<string, boolean>>({});
 const copyLabel = ref('');
 const captureEpoch = ref(0);
 const inputDirty = ref(false);
+const composing = ref(false);
 const lastCommitted = ref('');
 let applyingCapture = false;
 const pointerDown = { x: 0, y: 0 };
@@ -94,13 +92,6 @@ let unlistenVisibility: UnlistenFn | undefined;
 let unlistenEngineError: UnlistenFn | undefined;
 let unlistenCapture: UnlistenFn | undefined;
 let permissionPoll: number | undefined;
-
-function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
-  return promise.then((result) => {
-    if (result.status === 'ok') return result.data;
-    throw result.error;
-  });
-}
 
 function onShellPointerDown(e: MouseEvent) {
   pointerDown.x = e.clientX;
@@ -168,7 +159,15 @@ function onSearchEnter() {
   if (store.activeMode === 'grammar') void runGrammar();
 }
 
+function onSearchKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter') return;
+  if (!shouldHandlePanelShortcut(e)) return;
+  e.preventDefault();
+  onSearchEnter();
+}
+
 function applyCapturedText(selected: SelectedText, epoch: number) {
+  if (composing.value) return;
   if (!shouldApplyCapture(epoch, captureEpoch.value, inputDirty.value)) return;
   if (isStalePreferredCapture(selected.text, selected.method, lastCommitted.value)) return;
   applyingCapture = true;
@@ -190,6 +189,7 @@ function applyCapturedText(selected: SelectedText, epoch: number) {
 }
 
 function applyDelayedCapture(selected: SelectedText, epoch: number) {
+  if (composing.value) return;
   if (
     !shouldApplyDelayedCapture(
       epoch,
@@ -224,9 +224,9 @@ async function copyResult() {
     document.execCommand('copy');
     textarea.remove();
   }
-  copyLabel.value = '已复制';
+  copyLabel.value = t('translate.copied');
   window.setTimeout(() => {
-    if (copyLabel.value === '已复制') copyLabel.value = '';
+    if (copyLabel.value === t('translate.copied')) copyLabel.value = '';
   }, 1200);
 }
 
@@ -243,61 +243,6 @@ async function clearHistory() {
   await reloadHistory();
 }
 
-function providerView(id: string) {
-  return settings.value?.providers.find((provider) => provider.id === id) ?? null;
-}
-
-function viewToConfig(view: ProviderView): ProviderConfig_Serialize {
-  return {
-    enabled: view.enabled,
-    baseUrl: view.baseUrl,
-    model: view.model,
-    kind: view.kind,
-    temperature: view.temperature,
-    maxTokens: view.maxTokens,
-    formality: view.formality,
-  };
-}
-
-function buildConfig(): ProvidersConfig_Serialize {
-  const snapshot = settings.value;
-  if (!snapshot) throw new Error('设置尚未加载');
-  const config = (id: string) => viewToConfig(providerView(id) ?? {
-    id,
-    label: id,
-    enabled: false,
-    hasKey: false,
-    kind: null,
-    baseUrl: null,
-    model: null,
-    temperature: null,
-    maxTokens: null,
-    formality: null,
-    testable: id !== 'youdao',
-  });
-  return {
-    deepl: config('deepl'),
-    llm: config('llm'),
-    youdao: config('youdao'),
-    defaultTranslate: snapshot.defaultTranslate,
-    writeHistory: snapshot.writeHistory,
-  };
-}
-
-async function saveSettings() {
-  try {
-    settings.value = await unwrap(commands.providersSave(buildConfig()));
-  } catch (err) {
-    translateError.value = {
-      provider: 'settings',
-      code: 'invalid_config',
-      message: String(err),
-      hint: null,
-      copyable: `[jiti] settings ${String(err)}`,
-    };
-  }
-}
-
 async function loadSettings() {
   try {
     settings.value = await unwrap(commands.providersSnapshot());
@@ -310,19 +255,6 @@ async function loadSettings() {
     // 热键快照失败时占位符走平台默认。
   }
   await refreshPermissions();
-  await loadMistakePrefs();
-}
-
-async function loadMistakePrefs() {
-  try {
-    mistakes.setPreferences(await unwrap(commands.mistakesPreferences()));
-  } catch {
-    // 偏好失败时沿用默认：自动收录、未掌握。
-  }
-}
-
-function onHotkeysUpdated(snapshot: HotkeysSnapshot) {
-  hotkeys.value = snapshot;
 }
 
 async function refreshPermissions() {
@@ -331,7 +263,7 @@ async function refreshPermissions() {
     permissions.value = snapshot;
     if (snapshot.needsOnboarding) showOnboarding.value = true;
   } catch {
-    // 权限查询失败时不打断主流程；设置卡会保持上次状态。
+    // 权限查询失败时不打断主流程。
   }
 }
 
@@ -358,116 +290,35 @@ async function finishOnboarding() {
   permissions.value = await unwrap(commands.completeOnboarding());
   showOnboarding.value = false;
   stopPermissionPoll();
-  if (store.visible && footerPermissionWarning(permissions.value)) startPermissionPoll();
+  if (store.visible && footerPermissionWarning(permissions.value, tx)) startPermissionPoll();
 }
 
 async function restartApp() {
   await commands.restartApp();
 }
 
-function accessibilityItem(): PermissionItem | null {
-  return permissions.value?.items.find((item) => item.id === 'accessibility') ?? null;
+async function openSettings() {
+  await unwrap(commands.openSettings());
 }
 
-function onToggleProvider(id: string, event: Event) {
-  const view = providerView(id);
-  if (!view) return;
-  view.enabled = (event.target as HTMLInputElement).checked;
-  void saveSettings();
-}
-
-function onProviderField(id: string, field: 'baseUrl' | 'model', event: Event) {
-  const view = providerView(id);
-  if (!view) return;
-  const value = (event.target as HTMLInputElement).value;
-  if (field === 'baseUrl') view.baseUrl = value;
-  else view.model = value;
-  void saveSettings();
-}
-
-function onDefaultChange(event: Event) {
-  if (!settings.value) return;
-  settings.value.defaultTranslate = (event.target as HTMLSelectElement).value;
-  void saveSettings();
-}
-
-function onWriteHistory(event: Event) {
-  if (!settings.value) return;
-  settings.value.writeHistory = (event.target as HTMLInputElement).checked;
-  void saveSettings();
-}
-
-async function onAutoCollect(event: Event) {
-  const autoCollect = (event.target as HTMLInputElement).checked;
-  try {
-    mistakes.setPreferences(
-      await unwrap(
-        commands.mistakesSetPreferences({
-          ...mistakes.preferences,
-          autoCollect,
-        }),
-      ),
-    );
-  } catch {
-    /* 保持当前偏好 */
-  }
-}
-
-async function onDefaultMistakeStatus(event: Event) {
-  const defaultStatus = (event.target as HTMLSelectElement).value;
-  try {
-    mistakes.setPreferences(
-      await unwrap(
-        commands.mistakesSetPreferences({
-          ...mistakes.preferences,
-          defaultStatus: defaultStatus || 'open',
-        }),
-      ),
-    );
-  } catch {
-    /* 保持当前偏好 */
-  }
-}
-
-async function saveKey(id: string) {
-  const key = (keyInputs.value[id] ?? '').trim();
-  await unwrap(commands.providerSaveApiKey(id, key));
-  keyInputs.value[id] = '';
-  await loadSettings();
-}
-
-async function testProvider(id: string) {
-  testing.value[id] = true;
-  try {
-    testResults.value[id] = await unwrap(commands.providerTest(id));
-  } catch (err) {
-    testResults.value[id] = { ok: false, reason: String(err) };
-  } finally {
-    testing.value[id] = false;
-  }
-}
-
-async function openAccessibility() {
-  await unwrap(commands.openPermissionSettings('accessibility'));
-  startPermissionPoll();
-}
-
-function formatTime(value: string) {
-  const date = new Date(value.replace(' ', 'T') + 'Z');
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('zh-CN', { hour12: false });
+function historyKindLabel(kind: string) {
+  if (kind === 'grammar') return t('history.kindGrammar');
+  if (kind === 'ai_review') return t('history.kindReview');
+  return t('history.kindTranslate');
 }
 
 const statusText = computed(() => {
   const snapshot = settings.value;
-  if (!snapshot) return 'M0 骨架 · 引擎未配置';
+  if (!snapshot) return t('translate.engineUnconfigured');
   const active = snapshot.providers.find((provider) => provider.id === snapshot.defaultTranslate);
-  if (!active) return '引擎未设置';
-  return `${active.label} · ${active.hasKey ? 'Key 已配置' : 'Key 未配置'}`;
+  if (!active) return t('translate.engineUnset');
+  return t('translate.status', {
+    label: active.label,
+    key: active.hasKey ? t('translate.keyOn') : t('translate.keyOff'),
+  });
 });
 
-const permissionWarning = computed(() => footerPermissionWarning(permissions.value));
-const accessItem = computed(() => accessibilityItem());
+const permissionWarning = computed(() => footerPermissionWarning(permissions.value, tx));
 
 const translateShortcut = computed(() => {
   const bind = hotkeys.value?.bindings.find((item) => item.id === 'translate');
@@ -475,7 +326,7 @@ const translateShortcut = computed(() => {
   return permissions.value?.platform === 'windows' ? 'Ctrl+Shift+T' : '⌥⌘T';
 });
 
-const translateHint = computed(() => `输入文本，或选中一段文字后按 ${translateShortcut.value}`);
+const translateHint = computed(() => t('translate.hint', { shortcut: translateShortcut.value }));
 
 const grammarShortcut = computed(() => {
   const bind = hotkeys.value?.bindings.find((item) => item.id === 'grammar');
@@ -483,12 +334,12 @@ const grammarShortcut = computed(() => {
   return permissions.value?.platform === 'windows' ? 'Ctrl+Alt+G' : '⌥⌘G';
 });
 
-const grammarHint = computed(() => `输入英语文本，或选中一段文字后按 ${grammarShortcut.value}`);
+const grammarHint = computed(() => t('grammar.hint', { shortcut: grammarShortcut.value }));
 
 const placeholder = computed(() => {
   if (store.activeMode === 'translate') return translateHint.value;
   if (store.activeMode === 'grammar') return grammarHint.value;
-  return TABS.find((tab) => tab.key === store.activeMode)?.label ?? '输入';
+  return t(`tabs.${store.activeMode}`);
 });
 
 async function togglePin() {
@@ -505,6 +356,7 @@ async function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     return;
   }
+  if (!shouldHandlePanelShortcut(e)) return;
   if (e.key === 'Escape') {
     if (!shouldHidePanelOnEscape()) return;
     e.preventDefault();
@@ -512,6 +364,11 @@ async function onKeydown(e: KeyboardEvent) {
     return;
   }
   if (showOnboarding.value) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    e.preventDefault();
+    await openSettings();
+    return;
+  }
   if (e.key === 'Tab') {
     e.preventDefault();
     store.cycleMode(e.shiftKey ? -1 : 1);
@@ -531,6 +388,7 @@ async function onKeydown(e: KeyboardEvent) {
 }
 
 function onInputFocus(e: FocusEvent) {
+  if (composing.value) return;
   (e.target as HTMLInputElement).select();
 }
 
@@ -592,7 +450,6 @@ watch(
   () => store.activeMode,
   (mode) => {
     if (mode === 'history') void reloadHistory();
-    if (mode === 'settings') void loadSettings();
   },
 );
 
@@ -623,8 +480,8 @@ watch(
           type="button"
           :class="{ active: store.pinned }"
           :aria-pressed="store.pinned"
-          :aria-label="store.pinned ? '取消固定窗口' : '固定窗口'"
-          :title="store.pinned ? '取消固定' : '固定窗口，失去焦点时保持打开'"
+          :aria-label="store.pinned ? t('pin.on') : t('pin.off')"
+          :title="store.pinned ? t('pin.titleOn') : t('pin.titleOff')"
           @click.stop="togglePin"
         >
           <IconPinned v-if="store.pinned" :size="13" :stroke-width="2" />
@@ -644,11 +501,13 @@ watch(
         autocomplete="off"
         @focus="onInputFocus"
         @input="onSearchInput"
-        @keydown.enter.prevent="onSearchEnter"
+        @compositionstart="composing = true"
+        @compositionend="composing = false"
+        @keydown="onSearchKeydown"
       />
     </header>
 
-    <nav class="tabs" role="tablist" aria-label="模式">
+    <nav class="tabs" role="tablist" :aria-label="t('nav.modes')">
       <button
         v-for="tab in TABS"
         :key="tab.key"
@@ -663,7 +522,7 @@ watch(
         @keydown.right.prevent="store.cycleMode(1)"
       >
         <component :is="tab.icon" :size="16" :stroke-width="1.75" />
-        <span>{{ tab.label }}</span>
+        <span>{{ t(`tabs.${tab.key}`) }}</span>
       </button>
     </nav>
 
@@ -671,15 +530,15 @@ watch(
       <section v-if="store.activeMode === 'translate'" class="translate-view">
         <div class="toolbar">
           <div class="lang-pair">
-            <select v-model="source" class="native-select" aria-label="源语言">
-              <option value="auto">自动</option>
-              <option value="zh">中文</option>
-              <option value="en">英语</option>
+            <select v-model="source" class="native-select" :aria-label="t('lang.auto')">
+              <option value="auto">{{ t('lang.auto') }}</option>
+              <option value="zh">{{ t('lang.zh') }}</option>
+              <option value="en">{{ t('lang.en') }}</option>
             </select>
             <span class="lang-arrow" aria-hidden="true">→</span>
-            <select v-model="target" class="native-select" aria-label="目标语言">
-              <option value="zh">中文</option>
-              <option value="en">英语</option>
+            <select v-model="target" class="native-select" :aria-label="t('lang.zh')">
+              <option value="zh">{{ t('lang.zh') }}</option>
+              <option value="en">{{ t('lang.en') }}</option>
             </select>
           </div>
           <button
@@ -689,15 +548,15 @@ watch(
             @click="runTranslate()"
           >
             <IconPlayerPlay :size="14" :stroke-width="1.75" />
-            翻译
+            {{ t('translate.action') }}
           </button>
           <span class="spacer"></span>
           <button
             v-if="translateResult"
             class="icon-btn"
             type="button"
-            aria-label="复制结果"
-            title="复制结果"
+            :aria-label="t('translate.copy')"
+            :title="t('translate.copy')"
             @click="copyResult"
           >
             <IconCopy :size="15" :stroke-width="1.75" />
@@ -707,7 +566,7 @@ watch(
 
         <div v-if="translateStatus === 'loading'" class="state-box" aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
-          <span>正在翻译</span>
+          <span>{{ t('translate.loading') }}</span>
         </div>
         <div v-else-if="translateStatus === 'error' && translateError" class="error-box" data-tauri-drag-region="false" aria-live="assertive">
           <div class="error-title">{{ translateError.code }} · {{ translateError.message }}</div>
@@ -718,7 +577,7 @@ watch(
           <p class="output">{{ translateResult.output }}</p>
           <div class="meta">
             <span>{{ translateResult.engine }}</span>
-            <span v-if="translateResult.detectedFrom || translateResult.target">{{ languagePairLabel(translateResult.detectedFrom, translateResult.target) }}</span>
+            <span v-if="translateResult.detectedFrom || translateResult.target">{{ languagePairLabel(translateResult.detectedFrom, translateResult.target, t) }}</span>
             <span>{{ translateResult.durationMs }} ms</span>
           </div>
         </div>
@@ -741,7 +600,7 @@ watch(
 
       <section v-else-if="store.activeMode === 'history'" class="history-view">
         <div class="pane-header">
-          <span>历史记录</span>
+          <span>{{ t('history.title') }}</span>
           <button
             class="action subtle"
             type="button"
@@ -749,164 +608,25 @@ watch(
             @click="clearHistory"
           >
             <IconTrash :size="14" :stroke-width="1.75" />
-            清空
+            {{ t('history.clear') }}
           </button>
         </div>
         <div v-if="history.length === 0" class="state-box">
           <IconHistory :size="26" :stroke-width="1.5" />
-          <span>暂无历史</span>
+          <span>{{ t('history.empty') }}</span>
         </div>
         <ul v-else class="history-list">
           <li v-for="entry in history" :key="entry.id" class="history-row" data-tauri-drag-region="false">
             <div class="history-input">{{ entry.input }}</div>
             <div class="history-output">{{ entry.output }}</div>
             <div class="meta">
-              <span>{{ entry.kind === 'grammar' ? '语法' : entry.kind === 'ai_review' ? '复习' : '翻译' }}</span>
+              <span>{{ historyKindLabel(entry.kind) }}</span>
               <span>{{ entry.engine }}</span>
               <span>{{ entry.durationMs }} ms</span>
-              <span>{{ formatTime(entry.createdAt) }}</span>
+              <span>{{ formatTime(entry.createdAt, locale) }}</span>
             </div>
           </li>
         </ul>
-      </section>
-
-      <section v-else-if="store.activeMode === 'settings'" class="settings-view">
-        <div
-          v-if="accessItem && !accessItem.granted"
-          class="permission-card"
-        >
-          <span>辅助功能权限未开启</span>
-          <p class="muted">{{ accessItem.hint }}</p>
-          <button class="action" type="button" @click="openAccessibility">打开系统设置</button>
-        </div>
-
-        <p v-else-if="permissions?.platform === 'windows'" class="muted settings-note">
-          Windows 通过 UI Automation 读取选中文本，无需额外系统授权。
-        </p>
-
-        <Hotkeys
-          v-if="hotkeys"
-          :snapshot="hotkeys"
-          @updated="onHotkeysUpdated"
-        />
-
-        <div class="pane-header">
-          <span>引擎与 Key</span>
-          <button class="action subtle" type="button" @click="loadSettings">刷新</button>
-        </div>
-        <p class="muted settings-note">API Key 保存在本机 keys.json，不写入钥匙串。</p>
-
-        <div v-if="settings" class="setting-row">
-          <label class="field-label" for="default-engine">默认引擎</label>
-          <select
-            id="default-engine"
-            class="native-select"
-            :value="settings.defaultTranslate"
-            @change="onDefaultChange"
-          >
-            <option v-for="provider in settings.providers" :key="provider.id" :value="provider.id">
-              {{ provider.label }}
-            </option>
-          </select>
-          <label class="check">
-            <input type="checkbox" :checked="settings.writeHistory" @change="onWriteHistory" />
-            写历史
-          </label>
-        </div>
-
-        <div class="pane-header">
-          <span>错题本</span>
-        </div>
-        <div class="setting-row">
-          <label class="check">
-            <input
-              type="checkbox"
-              :checked="mistakes.preferences.autoCollect !== false"
-              @change="onAutoCollect"
-            />
-            自动收录
-          </label>
-          <label class="field-label" for="mistake-status">默认状态</label>
-          <select
-            id="mistake-status"
-            class="native-select"
-            :value="mistakes.preferences.defaultStatus ?? 'open'"
-            @change="onDefaultMistakeStatus"
-          >
-            <option value="open">未掌握</option>
-            <option value="learned">已掌握</option>
-            <option value="archived">已归档</option>
-          </select>
-        </div>
-
-        <div v-if="settings" class="provider-stack" data-tauri-drag-region="false">
-          <div v-for="provider in settings.providers" :key="provider.id" class="provider-card">
-            <div class="provider-head">
-              <strong>{{ provider.label }}</strong>
-              <label class="toggle">
-                <input
-                  type="checkbox"
-                  :checked="provider.enabled"
-                  @change="onToggleProvider(provider.id, $event)"
-                />
-                <span>{{ provider.enabled ? '已启用' : '未启用' }}</span>
-              </label>
-            </div>
-            <div class="field-grid">
-              <label class="field-label">Base URL</label>
-              <input
-                class="text-input"
-                type="url"
-                :value="provider.baseUrl ?? ''"
-                spellcheck="false"
-                @change="onProviderField(provider.id, 'baseUrl', $event)"
-              />
-              <template v-if="provider.id === 'llm'">
-                <label class="field-label">Model</label>
-                <input
-                  class="text-input"
-                  type="text"
-                  :value="provider.model ?? ''"
-                  spellcheck="false"
-                  @change="onProviderField(provider.id, 'model', $event)"
-                />
-              </template>
-            </div>
-            <div class="key-row">
-              <input
-                class="text-input mono"
-                type="password"
-                v-model="keyInputs[provider.id]"
-                placeholder="API Key"
-                autocomplete="off"
-                spellcheck="false"
-              />
-              <button class="action subtle" type="button" @click="saveKey(provider.id)">
-                保存 Key
-              </button>
-            </div>
-            <div class="test-row">
-              <span class="badge" :class="{ on: provider.hasKey }">
-                {{ provider.hasKey ? 'Key 已配置' : 'Key 未配置' }}
-              </span>
-              <button
-                v-if="provider.testable"
-                class="action subtle"
-                type="button"
-                :disabled="testing[provider.id]"
-                @click="testProvider(provider.id)"
-              >
-                {{ testing[provider.id] ? '测试中' : '测试连接' }}
-              </button>
-              <span v-if="testResults[provider.id]" class="test-result" :class="{ fail: !testResults[provider.id]?.ok }">
-                {{ testResults[provider.id]?.ok ? 'OK' : '失败' }}
-              </span>
-            </div>
-            <p v-if="testResults[provider.id]?.reason" class="test-reason">
-              {{ testResults[provider.id]?.reason }}
-            </p>
-          </div>
-        </div>
       </section>
     </main>
 
@@ -919,19 +639,28 @@ watch(
         v-if="permissionWarning"
         class="status-warn"
         type="button"
-        @click="store.setActiveMode('settings')"
+        @click="openSettings"
       >
         {{ permissionWarning }}
       </button>
       <span class="spacer"></span>
-      <span class="status-item mono">Esc 隐藏 · Tab 切模式</span>
+      <span class="status-item mono">{{ t('footer.escTab') }}</span>
+      <button
+        class="icon-btn"
+        type="button"
+        :aria-label="t('settings.open')"
+        :title="t('settings.open')"
+        @click.stop="openSettings"
+      >
+        <IconSettings :size="13" :stroke-width="2" />
+      </button>
       <button
         class="pin-btn"
         type="button"
         :class="{ active: store.pinned }"
         :aria-pressed="store.pinned"
-        :aria-label="store.pinned ? '取消固定窗口' : '固定窗口'"
-        :title="store.pinned ? '取消固定' : '固定窗口，失去焦点时保持打开'"
+        :aria-label="store.pinned ? t('pin.on') : t('pin.off')"
+        :title="store.pinned ? t('pin.titleOn') : t('pin.titleOff')"
         @click.stop="togglePin"
       >
         <IconPinned v-if="store.pinned" :size="13" :stroke-width="2" />

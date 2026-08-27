@@ -1,6 +1,6 @@
 # Jiti IPC 契约
 
-> 版本：**SCHEMA_VERSION = 5** · 2026-08-27 · M3 错题本
+> 版本：**SCHEMA_VERSION = 6** · 2026-08-27 · M4 设置完善
 > 事实源：`packages/native/src/ipc.rs`（tauri-specta 生成 `packages/ui/src/ipc/bindings.ts`）
 > 本文同时是未来远程后端 OpenAPI 初稿。破坏性变更必升 `SCHEMA_VERSION`；新字段一律 optional。
 
@@ -22,6 +22,9 @@
 | `mistakes_ai_review` | `MistakeFilter` | `AiReviewResult` / `EngineErrorPayload` | 聚合频次+代表例句后请求 LLM；成功写 `history(kind=ai_review)` |
 | `history_list` / `history_clear` | — | 条目 / 删除行数 | 含 translate / grammar / ai_review |
 | `providers_*` / `provider_*` | 见绑定 | 快照 / 测试结果 | Key 只进 `keys.json` |
+| `preferences_snapshot` | — | `PreferencesSnapshot` | locale / theme / 真实自启状态 |
+| `preferences_update` | `PreferencesPatch` | `PreferencesSnapshot` / string | 自启失败时返回错误，UI 回滚 |
+| `open_settings` | — | — | 独立设置窗口：已有则聚焦，否则创建；关闭即销毁 |
 | `hotkeys_*` / `permissions_*` / `panel_*` / `settings_*` | 见绑定 | — | 壳层能力 |
 
 ## 关键类型
@@ -45,6 +48,14 @@ MistakePreferences { autoCollect: boolean, defaultStatus: string }
 AiReviewResult { summary: string, analyzedCount: number, engine: string, durationMs: number }
 ```
 
+```ts
+PreferencesSnapshot {
+  locale: "system" | "zh-CN" | "en-US"
+  theme: "system" | "light" | "dark"
+  autostart: { enabled: boolean, hint: string | null }
+}
+```
+
 `GrammarResult` / `GrammarError` 不含持久化字段。空筛选的 AI 复习返回 `bad_request`（「当前筛选没有错题」）；网络/鉴权走既有 `EngineErrorPayload`。复习与导出**不修改**错题行。
 
 ## 事件
@@ -55,6 +66,7 @@ AiReviewResult { summary: string, analyzedCount: number, engine: string, duratio
 | `hotkey://pressed` | `{ mode, epoch, selection }` |
 | `capture://changed` | `{ epoch, selection }` |
 | `panel://visibility` | `"shown" \| "hidden"`（非 specta 事件） |
+| `preferences://changed` | `{ snapshot: PreferencesSnapshot }` |
 
 ## 错误码
 

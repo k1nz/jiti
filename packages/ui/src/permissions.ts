@@ -5,8 +5,15 @@ export function missingRequired(snapshot: PermissionsSnapshot | null): Permissio
   return snapshot.items.filter((item) => item.required && !item.granted);
 }
 
-export function footerPermissionWarning(snapshot: PermissionsSnapshot | null): string | null {
+export function footerPermissionWarning(
+  snapshot: PermissionsSnapshot | null,
+  t?: (key: string, values?: Record<string, unknown>) => string,
+): string | null {
   const missing = missingRequired(snapshot);
   if (missing.length === 0) return null;
-  return `${missing.map((item) => item.title).join('、')}未开启`;
+  const join = t ? t('footer.listJoin') : '、';
+  const names = missing
+    .map((item) => (t ? t(`permissions.${item.id}.title`) : item.title))
+    .join(join);
+  return t ? t('footer.permissionWarning', { names }) : `${names}未开启`;
 }

@@ -7,6 +7,7 @@ pub mod hotkeys;
 pub mod mistakes;
 pub mod panel;
 pub mod permissions;
+pub mod prefs;
 pub mod providers;
 pub mod selection;
 pub mod settings;

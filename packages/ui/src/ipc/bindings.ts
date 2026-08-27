@@ -9,6 +9,9 @@ export const commands = {
 	hidePopup: () => typedError<null, string>(__TAURI_INVOKE("hide_popup")),
 	setPanelPinned: (pinned: boolean) => __TAURI_INVOKE<boolean>("set_panel_pinned", { pinned }),
 	panelPinned: () => __TAURI_INVOKE<boolean>("panel_pinned"),
+	preferencesSnapshot: () => __TAURI_INVOKE<PreferencesSnapshot>("preferences_snapshot"),
+	preferencesUpdate: (patch: PreferencesPatch) => typedError<PreferencesSnapshot, string>(__TAURI_INVOKE("preferences_update", { patch })),
+	openSettings: () => typedError<null, string>(__TAURI_INVOKE("open_settings")),
 	settingsGet: (key: string) => typedError<"Null" | boolean | number | null | string | SettingsValue[] | ([string, SettingsValue])[] | null, string>(__TAURI_INVOKE("settings_get", { key })),
 	settingsSet: (key: string, value: SettingsValue) => typedError<null, string>(__TAURI_INVOKE("settings_set", { key, value })),
 	getSelectedText: () => __TAURI_INVOKE<SelectedText>("get_selected_text"),
@@ -48,6 +51,7 @@ export const events = {
 	captureChanged: makeEvent<CaptureChangedEvent>("capture://changed"),
 	engineError: makeEvent<EngineErrorEvent>("engine://error"),
 	hotkeyPressed: makeEvent<HotkeyPressedEvent>("hotkey://pressed"),
+	preferencesChanged: makeEvent<PreferencesChangedEvent>("preferences://changed"),
 };
 
 /* Types */
@@ -63,6 +67,11 @@ export type AiReviewResult = {
 	analyzedCount: number,
 	engine: string,
 	durationMs: number,
+};
+
+export type AutostartStatus = {
+	enabled: boolean,
+	hint: string | null,
 };
 
 /**  剪贴板稍后完成时补发（与对应热键的 epoch 对齐；可覆盖滞后的 AX/UIA）。 */
@@ -321,6 +330,22 @@ export type PermissionsSnapshot = {
 	needsOnboarding: boolean,
 };
 
+export type PreferencesChangedEvent = {
+	snapshot: PreferencesSnapshot,
+};
+
+export type PreferencesPatch = {
+	locale?: UiLocale | null,
+	theme?: ThemePref | null,
+	autostart?: boolean | null,
+};
+
+export type PreferencesSnapshot = {
+	locale: UiLocale,
+	theme: ThemePref,
+	autostart: AutostartStatus,
+};
+
 /**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。 */
 export type ProviderConfig = ProviderConfig_Serialize | ProviderConfig_Deserialize;
 
@@ -410,6 +435,8 @@ export type TestProviderResult = {
 	reason: string | null,
 };
 
+export type ThemePref = "system" | "light" | "dark";
+
 /**  翻译请求：§5.2 统一进出参 `{text, from?, to}`。 */
 export type TranslateRequest = TranslateRequest_Serialize | TranslateRequest_Deserialize;
 
@@ -436,6 +463,8 @@ export type TranslateResult = {
 	target: string,
 	durationMs: number,
 };
+
+export type UiLocale = "system" | "zh-CN" | "en-US";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

@@ -1,11 +1,12 @@
 # Jiti · 快速翻译 / 语法检查桌面工具 · 技术架构设计
 
 > 工作代号：**Jiti**（可随时改名）
-> 版本：**v0.3.0** · 2026-08-27 · 面向 macOS 与 Windows 10/11
+> 版本：**v0.4.0** · 2026-08-27 · 面向 macOS 与 Windows 10/11
 > 目标形态：Raycast 风格的小弹窗，全局快捷键唤起，常驻后台，秒级显示
 > v0.2 变更：依据 `native-feel-cross-platform-desktop` 技能完成架构审计（哲学八原则、WebView 存活清单、IPC 单契约、内存基线修正），依据 `design-taste-frontend` 重写 UI 层设计规范
 > v0.2.2 变更：M2 语法检查闭环（SSE+NDJSON、错误卡片、grammar 历史、进程内 LRU）
 > v0.3.0 变更：M3 错题本（版本化 SQLite、自动/手动收录、筛选、Markdown 导出、AI 复习）；LanguageTool / i18n / 主题 / 自启仍属后续里程碑
+> v0.4.0 变更：M4 设置完善（独立设置窗口、开机自启、vue-i18n zh-CN/en-US、浅/深/系统主题、IME 专项 QA）；弹窗位置策略与 LanguageTool 仍后置
 
 ---
 
@@ -503,7 +504,7 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 ```
 ┌──────────────────────────────────────────────┐  ← 平台窗口（OS 圆角/阴影/材质）
 │ [ 搜索/输入框  选中自动填入 ]                     │  ← 聚焦即全选，可直接替换
-│ [ 翻译 ] [ 语法 ] [ 错题本 ] [ 历史 ] [ 设置 ]   │  ← Tab 切换；支持直达热键
+│ [ 翻译 ] [ 语法 ] [ 错题本 ] [ 历史 ]           │  ← Tab 切换；设置走独立窗口（⌘, / Ctrl-,）
 │ ┌──────────────────────────────────────────┐ │
 │ │ 翻译: 原文 / 译文 [+复制]                 │ │
 │ │ 语法: 错误卡片(类型/严重度/修改/中文讲解)  │ │
@@ -553,8 +554,9 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 - 无 div 拼出来的"假截图"类装饰（本应用就是产品本身，不需要）。
 
 ### 8.8 i18n
-- `vue-i18n`，`zh-CN` 默认 / `en-US`。
+- `vue-i18n`，`zh-CN` 默认 / `en-US`；设置项「跟随系统 / 简体中文 / English」。
 - 「界面语言」与「翻译语种」分开；语法讲解语气固定为面向中文英语学习者（中文讲解），不随界面语言变（产品定位）。
+- 设置是独立窗口（`packages/ui/src/settings/`，⌘, / Ctrl-, / 托盘），关闭即销毁。IME 专项 QA 见 [`docs/m4-ime-qa.md`](m4-ime-qa.md)。
 
 ---
 
@@ -576,7 +578,7 @@ jiti/
 │  ├─ ui/                  # Vue 3 + Vite + TS 弹窗前端
 │  │  ├─ src/panel/        #  主面板入口（预热常驻）
 │  │  ├─ src/settings/     #  设置独立入口（用后即拆，独立 bundle）
-│  │  ├─ src/core/         #  纯 TS：providers 契约、normalize、settings 校验
+│  │  ├─ src/i18n/         #  zh-CN / en-US 界面文案
 │  │  ├─ src/ipc/bindings.ts  #  ← tauri-specta 生成，勿手改
 │  │  └─ tests/            #  Vitest
 │  └─ native/              # = src-tauri（Rust）
@@ -618,7 +620,7 @@ jiti/
 | Rust | cargo test + mockito | provider 适配器（mock HTTP）、SSE 解析、SQL 迁移 |
 | IPC 契约 | 构建期 tauri-specta 生成 + TS 类型编译 | 类型同步（改 Rust 后 TS 不通过=红） |
 | E2E（增值） | tauri-driver / WebdriverIO | 弹窗开合、热键→面板、假引擎翻译/语法流程 |
-| 手工 QA | 真机双端 | 权限引导、快捷键冲突、**Pinyin 输入法**、断网降级、**隐藏窗节流（§4.6 A.1）** |
+| 手工 QA | 真机双端 | 权限引导、快捷键冲突、**Pinyin 输入法**（[`docs/m4-ime-qa.md`](m4-ime-qa.md)）、断网降级、**隐藏窗节流（§4.6 A.1）** |
 
 **发布门禁**：M5 收尾时跑一遍 native-feel `checklists/ship-readiness.md`（70 项审计，A-G 段不允许红，H/I 可少量留）。详见附录 A。
 
@@ -685,7 +687,7 @@ jiti/
 | **M1 翻译** | translate 命令（DeepL + 有道 + LLM）、选中捕获链（AX/UIA + 剪贴板兜底）、翻译 Tab、历史入库；**密钥三分：Key 进 `keys.json`，不进 Keychain、不进历史库**（§6） | 选中即译可用，保存 Key 不再弹系统密码 |
 | **M2 语法** | LLM NDJSON 流式 + 一次结构重试、错误卡片、grammar 历史；LanguageTool 仅留分支 | 语法检查可用 |
 | **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结；语法自动/手动收录 | 错题本能用 |
-| **M4 设置完善** | 自启、i18n、主题、IME 专项 QA（快捷键重配已在设置页落地） | 可交付内测 |
+| **M4 设置完善** | 自启、i18n、主题、独立设置窗口、IME 专项 QA（快捷键重配已落地） | 可交付内测（已接通） |
 | **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、**签名公证双端打包**（签名后 Keychain 可静默访问，为密钥升级铺路） | 可对外分发 |
 | **后置** | **密钥升级（可选，§6.2）**：`keys.json` → 加密库或 Keychain，一次性迁移、IPC 不变、Key 永不进历史表；Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |
 
@@ -738,4 +740,4 @@ jiti/
 
 ---
 
-*本文档随需求变化维护。任何「预留」字段/边界改动需与 M4 一起评审。*
+*本文档随需求变化维护。弹窗位置（跟随鼠标/居中/记住）与 LanguageTool 适配器仍后置，不在 M4 范围。*

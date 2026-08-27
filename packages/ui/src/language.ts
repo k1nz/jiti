@@ -6,16 +6,16 @@ export type SourceChoice = 'auto' | LangCode;
 const CJK = /[\u3400-\u4dbf\u4e00-\u9fff]/;
 const LATIN = /[A-Za-z]/;
 
-const LABELS: Record<string, string> = {
-  auto: '自动',
-  zh: '中文',
-  en: '英语',
-  ja: '日语',
-  ko: '韩语',
-  de: '德语',
-  fr: '法语',
-  es: '西班牙语',
-  sk: '斯洛伐克语',
+const LABEL_KEYS: Record<string, string> = {
+  auto: 'lang.auto',
+  zh: 'lang.zh',
+  en: 'lang.en',
+  ja: 'lang.ja',
+  ko: 'lang.ko',
+  de: 'lang.de',
+  fr: 'lang.fr',
+  es: 'lang.es',
+  sk: 'lang.sk',
 };
 
 export function hasCjk(text: string): boolean {
@@ -44,18 +44,28 @@ export function resolveSource(choice: SourceChoice, text: string): string | null
   return guessSource(text);
 }
 
-export function languageLabel(code: string | null | undefined): string {
-  if (!code) return '';
+export function languageLabelKey(code: string | null | undefined): string | null {
+  if (!code) return null;
   const key = code.trim().toLowerCase().split(/[-_]/)[0] ?? code;
-  return LABELS[key] ?? code;
+  return LABEL_KEYS[key] ?? null;
+}
+
+export function languageLabel(
+  code: string | null | undefined,
+  t: (key: string) => string = (key) => key,
+): string {
+  const key = languageLabelKey(code);
+  if (key) return t(key);
+  return code ?? '';
 }
 
 export function languagePairLabel(
   from: string | null | undefined,
   to: string | null | undefined,
+  t: (key: string) => string = (key) => key,
 ): string {
-  const src = languageLabel(from);
-  const dst = languageLabel(to);
+  const src = languageLabel(from, t);
+  const dst = languageLabel(to, t);
   if (src && dst) return `${src} → ${dst}`;
   return dst;
 }

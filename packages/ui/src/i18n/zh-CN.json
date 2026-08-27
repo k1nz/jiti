@@ -1,0 +1,171 @@
+{
+  "app": {
+    "name": "Jiti"
+  },
+  "tabs": {
+    "translate": "翻译",
+    "grammar": "语法",
+    "mistakes": "错题本",
+    "history": "历史"
+  },
+  "nav": {
+    "modes": "模式"
+  },
+  "lang": {
+    "auto": "自动",
+    "zh": "中文",
+    "en": "英语",
+    "ja": "日语",
+    "ko": "韩语",
+    "de": "德语",
+    "fr": "法语",
+    "es": "西班牙语",
+    "sk": "斯洛伐克语"
+  },
+  "translate": {
+    "action": "翻译",
+    "copy": "复制结果",
+    "copied": "已复制",
+    "loading": "正在翻译",
+    "hint": "输入文本，或选中一段文字后按 {shortcut}",
+    "engineUnconfigured": "引擎未配置",
+    "engineUnset": "引擎未设置",
+    "keyOn": "Key 已配置",
+    "keyOff": "Key 未配置",
+    "status": "{label} · {key}"
+  },
+  "grammar": {
+    "action": "检查",
+    "copy": "复制改写",
+    "checking": "正在检查",
+    "retrying": "正在重新解析",
+    "ok": "未发现语法问题",
+    "hint": "输入英语文本，或选中一段文字后按 {shortcut}"
+  },
+  "history": {
+    "title": "历史记录",
+    "clear": "清空",
+    "empty": "暂无历史",
+    "kindTranslate": "翻译",
+    "kindGrammar": "语法",
+    "kindReview": "复习"
+  },
+  "footer": {
+    "escTab": "Esc 隐藏 · Tab 切模式",
+    "permissionWarning": "{names}未开启",
+    "listJoin": "、"
+  },
+  "pin": {
+    "on": "取消固定窗口",
+    "off": "固定窗口",
+    "titleOn": "取消固定",
+    "titleOff": "固定窗口，失去焦点时保持打开"
+  },
+  "settings": {
+    "open": "打开设置",
+    "title": "设置",
+    "general": "通用",
+    "locale": "界面语言",
+    "localeSystem": "跟随系统",
+    "localeZh": "简体中文",
+    "localeEn": "English",
+    "theme": "主题",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "autostart": "开机自启",
+    "engines": "引擎与 Key",
+    "refresh": "刷新",
+    "keyNote": "API Key 保存在本机 keys.json，不写入钥匙串。",
+    "defaultEngine": "默认引擎",
+    "writeHistory": "写历史",
+    "mistakes": "错题本",
+    "autoCollect": "自动收录",
+    "defaultStatus": "默认状态",
+    "saveKey": "保存 Key",
+    "test": "测试连接",
+    "testing": "测试中",
+    "testOk": "OK",
+    "testFail": "失败",
+    "enabled": "已启用",
+    "disabled": "未启用",
+    "baseUrl": "Base URL",
+    "model": "Model",
+    "apiKey": "API Key",
+    "permissionOff": "辅助功能权限未开启",
+    "windowsNote": "Windows 通过 UI Automation 读取选中文本，无需额外系统授权。",
+    "openSystem": "打开系统设置",
+    "notLoaded": "设置尚未加载"
+  },
+  "hotkeys": {
+    "title": "快捷键",
+    "reset": "恢复默认",
+    "note": "点击组合键，再按下新的快捷键。Esc 取消。",
+    "press": "按下组合键…",
+    "aria": "修改{title}快捷键，当前 {display}",
+    "unregistered": "{keys}未能注册，可能已被其他程序占用。",
+    "translate": "翻译",
+    "grammar": "语法",
+    "panel": "面板"
+  },
+  "onboarding": {
+    "kicker": "首次使用",
+    "title": "开启必要权限",
+    "lead": "Jiti 需要读取你在其他应用中选中的文字，才能一键翻译。授权只需一次，之后可随时在设置里查看。",
+    "granted": "已开启",
+    "missing": "未开启",
+    "enable": "去开启",
+    "step1": "点击「去开启」，在系统设置的列表里找到 Jiti",
+    "step2": "打开右侧开关",
+    "step3": "回到这里，状态会自动更新",
+    "later": "稍后再说",
+    "recheck": "重新检测",
+    "restart": "重启应用",
+    "start": "开始使用"
+  },
+  "permissions": {
+    "accessibility": {
+      "title": "辅助功能",
+      "description": "读取其他应用中的选中文字；无法直接读取时用模拟复制兜底。",
+      "hintOff": "在系统设置里找到 Jiti，打开右侧开关。授权后回到这里，状态会自动更新。",
+      "hintOn": "若授权后仍读不到选中文字，请从托盘退出后重新打开。"
+    }
+  },
+  "errorType": {
+    "grammar": "语法",
+    "spelling": "拼写",
+    "punctuation": "标点",
+    "word_choice": "用词",
+    "style": "风格",
+    "other": "其他"
+  },
+  "status": {
+    "open": "未掌握",
+    "learned": "已掌握",
+    "archived": "已归档"
+  },
+  "mistakes": {
+    "title": "错题本",
+    "export": "导出",
+    "review": "AI 总结",
+    "reviewing": "正在总结",
+    "loading": "正在加载",
+    "loadFail": "加载失败",
+    "retry": "重试",
+    "empty": "还没有错题，检查一次就有了",
+    "allTypes": "全部类型",
+    "allStatus": "全部状态",
+    "sevenDays": "7 天",
+    "thirtyDays": "30 天",
+    "allTime": "全部时间",
+    "count": "{n} 条",
+    "learn": "掌握",
+    "archive": "归档",
+    "restore": "恢复",
+    "remove": "删除",
+    "collect": "收录错题",
+    "collected": "已收录",
+    "uncollect": "取消收录",
+    "pending": "待完成"
+  }
+}

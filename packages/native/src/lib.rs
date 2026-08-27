@@ -43,6 +43,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(specta.invoke_handler())
         .setup(move |app| {
             // specta 事件（hotkey://pressed / capture://changed / engine://error）必须先挂上，

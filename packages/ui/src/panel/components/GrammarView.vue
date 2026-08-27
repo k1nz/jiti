@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { IconAbc, IconCopy, IconPlayerPlay } from '@tabler/icons-vue';
 import { commands } from '../../ipc/bindings';
 import type { GrammarError, NewMistake } from '../../ipc/bindings';
+import { unwrap } from '../../ipc/unwrap';
 import { useGrammarStore } from '../../stores/grammar';
 import { useMistakesStore } from '../../stores/mistakes';
 import GrammarErrorCard, { type CollectState } from './GrammarErrorCard.vue';
@@ -18,15 +20,9 @@ const emit = defineEmits<{
   copy: [];
 }>();
 
+const { t } = useI18n();
 const grammar = useGrammarStore();
 const mistakes = useMistakesStore();
-
-function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
-  return promise.then((result) => {
-    if (result.status === 'ok') return result.data;
-    throw result.error;
-  });
-}
 
 function collectState(index: number): CollectState {
   if (grammar.status === 'loading' || grammar.status === 'streaming') {
@@ -82,8 +78,8 @@ const showResults = computed(
   () => grammar.hasContent || grammar.status === 'done' || grammar.status === 'streaming',
 );
 const statusLabel = computed(() => {
-  if (grammar.retrying) return '正在重新解析';
-  if (busy.value) return '正在检查';
+  if (grammar.retrying) return t('grammar.retrying');
+  if (busy.value) return t('grammar.checking');
   return '';
 });
 </script>
@@ -93,7 +89,7 @@ const statusLabel = computed(() => {
     <div class="toolbar">
       <button class="action" type="button" :disabled="!canCheck" @click="emit('check')">
         <IconPlayerPlay :size="14" :stroke-width="1.75" />
-        检查
+        {{ t('grammar.action') }}
       </button>
       <span v-if="statusLabel" class="grammar-retry" aria-live="polite">{{ statusLabel }}</span>
       <span class="spacer"></span>
@@ -101,8 +97,8 @@ const statusLabel = computed(() => {
         v-if="grammar.correctedText"
         class="icon-btn"
         type="button"
-        aria-label="复制改写"
-        title="复制改写"
+            :aria-label="t('grammar.copy')"
+            :title="t('grammar.copy')"
         @click="emit('copy')"
       >
         <IconCopy :size="15" :stroke-width="1.75" />
@@ -133,7 +129,7 @@ const statusLabel = computed(() => {
         v-if="!busy && grammar.status === 'done' && grammar.errors.length === 0"
         class="grammar-success"
       >
-        未发现语法问题
+        {{ t('grammar.ok') }}
       </p>
       <ul v-if="grammar.errors.length" class="grammar-cards">
         <li v-for="(item, index) in grammar.errors" :key="`${item.fragment}-${index}`">

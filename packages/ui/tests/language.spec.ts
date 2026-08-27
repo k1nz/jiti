@@ -42,9 +42,9 @@ describe('guessTarget / resolveSource', () => {
 
 describe('languageLabel', () => {
   it('把引擎返回的语言码显示成人话', () => {
-    expect(languageLabel('sk')).toBe('斯洛伐克语');
-    expect(languageLabel('EN')).toBe('英语');
-    expect(languageLabel('zh-Hans')).toBe('中文');
-    expect(languagePairLabel('en', 'zh')).toBe('英语 → 中文');
+    expect(languageLabel('sk')).toBe('lang.sk');
+    expect(languageLabel('EN')).toBe('lang.en');
+    expect(languageLabel('zh-Hans')).toBe('lang.zh');
+    expect(languagePairLabel('en', 'zh')).toBe('lang.en → lang.zh');
   });
 });

@@ -1,7 +1,7 @@
 [package]
 name = "jiti"
 version = "0.1.0"
-description = "Jiti — 快速翻译 / 语法检查桌面工具（M0 骨架）"
+description = "Jiti — 快速翻译 / 语法检查桌面工具"
 edition = "2021"
 
 [lib]
@@ -17,6 +17,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript", "derive"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function", "serde_json"] }
 specta-typescript = "=0.0.12"

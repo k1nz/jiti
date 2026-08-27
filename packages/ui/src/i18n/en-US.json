@@ -1,0 +1,171 @@
+{
+  "app": {
+    "name": "Jiti"
+  },
+  "tabs": {
+    "translate": "Translate",
+    "grammar": "Grammar",
+    "mistakes": "Notebook",
+    "history": "History"
+  },
+  "nav": {
+    "modes": "Modes"
+  },
+  "lang": {
+    "auto": "Auto",
+    "zh": "Chinese",
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "sk": "Slovak"
+  },
+  "translate": {
+    "action": "Translate",
+    "copy": "Copy result",
+    "copied": "Copied",
+    "loading": "Translating",
+    "hint": "Type text, or select some text and press {shortcut}",
+    "engineUnconfigured": "Engine not configured",
+    "engineUnset": "No engine selected",
+    "keyOn": "Key saved",
+    "keyOff": "Key missing",
+    "status": "{label} · {key}"
+  },
+  "grammar": {
+    "action": "Check",
+    "copy": "Copy rewrite",
+    "checking": "Checking",
+    "retrying": "Reparsing",
+    "ok": "No grammar issues found",
+    "hint": "Type English text, or select some text and press {shortcut}"
+  },
+  "history": {
+    "title": "History",
+    "clear": "Clear",
+    "empty": "No history yet",
+    "kindTranslate": "Translate",
+    "kindGrammar": "Grammar",
+    "kindReview": "Review"
+  },
+  "footer": {
+    "escTab": "Esc hide · Tab switch mode",
+    "permissionWarning": "{names} is off",
+    "listJoin": ", "
+  },
+  "pin": {
+    "on": "Unpin window",
+    "off": "Pin window",
+    "titleOn": "Unpin",
+    "titleOff": "Pin window so it stays open when it loses focus"
+  },
+  "settings": {
+    "open": "Open settings",
+    "title": "Settings",
+    "general": "General",
+    "locale": "Interface language",
+    "localeSystem": "System",
+    "localeZh": "简体中文",
+    "localeEn": "English",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "autostart": "Launch at login",
+    "engines": "Engines and keys",
+    "refresh": "Refresh",
+    "keyNote": "API keys stay in local keys.json, not the system keychain.",
+    "defaultEngine": "Default engine",
+    "writeHistory": "Write history",
+    "mistakes": "Notebook",
+    "autoCollect": "Auto collect",
+    "defaultStatus": "Default status",
+    "saveKey": "Save key",
+    "test": "Test connection",
+    "testing": "Testing",
+    "testOk": "OK",
+    "testFail": "Failed",
+    "enabled": "On",
+    "disabled": "Off",
+    "baseUrl": "Base URL",
+    "model": "Model",
+    "apiKey": "API Key",
+    "permissionOff": "Accessibility permission is off",
+    "windowsNote": "Windows reads selected text through UI Automation and does not need extra system permission.",
+    "openSystem": "Open system settings",
+    "notLoaded": "Settings are not loaded yet"
+  },
+  "hotkeys": {
+    "title": "Shortcuts",
+    "reset": "Restore defaults",
+    "note": "Click a shortcut, then press the new keys. Esc cancels.",
+    "press": "Press a shortcut…",
+    "aria": "Change {title} shortcut, currently {display}",
+    "unregistered": "{keys} could not be registered and may be used by another app.",
+    "translate": "Translate",
+    "grammar": "Grammar",
+    "panel": "Panel"
+  },
+  "onboarding": {
+    "kicker": "First run",
+    "title": "Turn on required permissions",
+    "lead": "Jiti needs to read text you select in other apps so it can translate in one step. This is a one-time grant; you can review it later in Settings.",
+    "granted": "On",
+    "missing": "Off",
+    "enable": "Turn on",
+    "step1": "Click Turn on, then find Jiti in the system list",
+    "step2": "Enable the switch",
+    "step3": "Return here; the status updates automatically",
+    "later": "Later",
+    "recheck": "Recheck",
+    "restart": "Restart app",
+    "start": "Get started"
+  },
+  "permissions": {
+    "accessibility": {
+      "title": "Accessibility",
+      "description": "Read selected text in other apps, with a simulated copy fallback when direct access fails.",
+      "hintOff": "Find Jiti in System Settings and turn the switch on. Come back here; the status updates automatically.",
+      "hintOn": "If selected text still cannot be read after granting access, quit from the tray and open the app again."
+    }
+  },
+  "errorType": {
+    "grammar": "Grammar",
+    "spelling": "Spelling",
+    "punctuation": "Punctuation",
+    "word_choice": "Word choice",
+    "style": "Style",
+    "other": "Other"
+  },
+  "status": {
+    "open": "Open",
+    "learned": "Learned",
+    "archived": "Archived"
+  },
+  "mistakes": {
+    "title": "Notebook",
+    "export": "Export",
+    "review": "AI review",
+    "reviewing": "Summarizing",
+    "loading": "Loading",
+    "loadFail": "Failed to load",
+    "retry": "Retry",
+    "empty": "No notes yet. Check some text to collect one.",
+    "allTypes": "All types",
+    "allStatus": "All statuses",
+    "sevenDays": "7 days",
+    "thirtyDays": "30 days",
+    "allTime": "All time",
+    "count": "{n} items",
+    "learn": "Learned",
+    "archive": "Archive",
+    "restore": "Restore",
+    "remove": "Delete",
+    "collect": "Save note",
+    "collected": "Saved",
+    "uncollect": "Remove",
+    "pending": "Pending"
+  }
+}
