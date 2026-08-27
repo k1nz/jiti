@@ -25,6 +25,14 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::commands::providers::provider_test,
             crate::commands::history::history_list,
             crate::commands::history::history_clear,
+            crate::commands::mistakes::mistakes_list,
+            crate::commands::mistakes::mistakes_create,
+            crate::commands::mistakes::mistakes_update,
+            crate::commands::mistakes::mistakes_delete,
+            crate::commands::mistakes::mistakes_preferences,
+            crate::commands::mistakes::mistakes_set_preferences,
+            crate::commands::mistakes::mistakes_export,
+            crate::commands::mistakes::mistakes_ai_review,
             crate::commands::hotkeys::hotkeys_snapshot,
             crate::commands::hotkeys::hotkeys_set,
             crate::commands::hotkeys::hotkeys_reset,
@@ -69,9 +77,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 /// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。M0 暂无消费方，M1 接入 IPC 日志时启用。
+/// §3.5 要求的版本化常量：破坏性变更必升。M3 将 grammar_check 出参改为 GrammarCheckOutcome，并新增 mistakes_*。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 #[cfg(test)]
 mod tests {

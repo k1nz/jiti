@@ -4,6 +4,7 @@ pub mod accessibility;
 pub mod grammar;
 pub mod history;
 pub mod hotkeys;
+pub mod mistakes;
 pub mod panel;
 pub mod permissions;
 pub mod providers;

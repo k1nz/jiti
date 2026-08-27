@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { IconAbc, IconCopy, IconPlayerPlay } from '@tabler/icons-vue';
+import { commands } from '../../ipc/bindings';
+import type { GrammarError, NewMistake } from '../../ipc/bindings';
 import { useGrammarStore } from '../../stores/grammar';
-import GrammarErrorCard from './GrammarErrorCard.vue';
+import { useMistakesStore } from '../../stores/mistakes';
+import GrammarErrorCard, { type CollectState } from './GrammarErrorCard.vue';
 
 const props = defineProps<{
   input: string;
@@ -16,6 +19,61 @@ const emit = defineEmits<{
 }>();
 
 const grammar = useGrammarStore();
+const mistakes = useMistakesStore();
+
+function unwrap<T>(promise: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: unknown }>) {
+  return promise.then((result) => {
+    if (result.status === 'ok') return result.data;
+    throw result.error;
+  });
+}
+
+function collectState(index: number): CollectState {
+  if (grammar.status === 'loading' || grammar.status === 'streaming') {
+    return mistakes.preferences.autoCollect !== false ? 'pending' : 'hidden';
+  }
+  if (grammar.mistakeIds[index] != null) return 'collected';
+  return 'idle';
+}
+
+function toNewMistake(error: GrammarError): NewMistake {
+  return {
+    sourceText: grammar.result?.input ?? '',
+    fragment: error.fragment,
+    correction: error.correction,
+    errorType: error.type,
+    severity: error.severity,
+    explanation: error.explanation,
+    correctedSentence: grammar.correctedText,
+    suggestions: error.suggestions,
+    engine: grammar.result?.engine ?? null,
+    sourceApp: null,
+    tags: null,
+    status: mistakes.preferences.defaultStatus ?? 'open',
+  };
+}
+
+async function collect(index: number) {
+  const error = grammar.errors[index];
+  if (!error) return;
+  try {
+    const created = await unwrap(commands.mistakesCreate(toNewMistake(error)));
+    grammar.setMistakeId(index, created.id);
+  } catch {
+    /* 收录失败时保持未收录，不打断检查结果 */
+  }
+}
+
+async function uncollect(index: number) {
+  const id = grammar.mistakeIds[index];
+  if (id == null) return;
+  try {
+    await unwrap(commands.mistakesDelete(id));
+    grammar.setMistakeId(index, null);
+  } catch {
+    /* 取消失败时保持已收录 */
+  }
+}
 
 const busy = computed(() => grammar.status === 'loading' || grammar.status === 'streaming');
 const canCheck = computed(() => props.input.trim().length > 0 && !busy.value);
@@ -79,7 +137,12 @@ const statusLabel = computed(() => {
       </p>
       <ul v-if="grammar.errors.length" class="grammar-cards">
         <li v-for="(item, index) in grammar.errors" :key="`${item.fragment}-${index}`">
-          <GrammarErrorCard :error="item" />
+          <GrammarErrorCard
+            :error="item"
+            :collect-state="collectState(index)"
+            @collect="collect(index)"
+            @uncollect="uncollect(index)"
+          />
         </li>
       </ul>
       <div v-if="grammar.result" class="meta">

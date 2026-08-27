@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import type {
   EngineErrorPayload,
+  GrammarCheckOutcome_Serialize,
   GrammarError,
   GrammarProgressEvent_Deserialize,
   GrammarResult_Serialize,
@@ -18,6 +19,7 @@ export const useGrammarStore = defineStore('grammar', () => {
   const result = ref<GrammarResult_Serialize | null>(null);
   const error = ref<EngineErrorPayload | null>(null);
   const retrying = ref(false);
+  const mistakeIds = ref<(number | null)[]>([]);
 
   const hasContent = computed(
     () => overall.value !== null || correctedText.value !== null || errors.value.length > 0,
@@ -37,6 +39,7 @@ export const useGrammarStore = defineStore('grammar', () => {
     errors.value = [];
     result.value = null;
     error.value = null;
+    mistakeIds.value = [];
     return id;
   }
 
@@ -64,6 +67,7 @@ export const useGrammarStore = defineStore('grammar', () => {
         correctedText.value = null;
         errors.value = [];
         result.value = null;
+        mistakeIds.value = [];
         status.value = 'loading';
         break;
       case 'finished':
@@ -73,14 +77,24 @@ export const useGrammarStore = defineStore('grammar', () => {
     }
   }
 
-  function finish(id: number, finalResult: GrammarResult_Serialize) {
+  function finish(id: number, outcome: GrammarCheckOutcome_Serialize | GrammarResult_Serialize) {
     if (!isLive(id)) return;
+    const finalResult = 'result' in outcome ? outcome.result : outcome;
+    const ids = 'mistakeIds' in outcome ? outcome.mistakeIds : [];
     result.value = finalResult;
     overall.value = finalResult.overall ?? overall.value;
     correctedText.value = finalResult.correctedText ?? correctedText.value;
     errors.value = finalResult.errors;
+    mistakeIds.value = alignMistakeIds(ids, finalResult.errors.length);
     retrying.value = false;
     status.value = 'done';
+  }
+
+  function setMistakeId(index: number, id: number | null) {
+    const next = [...mistakeIds.value];
+    while (next.length <= index) next.push(null);
+    next[index] = id;
+    mistakeIds.value = next;
   }
 
   function fail(id: number, payload: EngineErrorPayload) {
@@ -104,6 +118,7 @@ export const useGrammarStore = defineStore('grammar', () => {
     result,
     error,
     retrying,
+    mistakeIds,
     hasContent,
     begin,
     applyProgress,
@@ -111,5 +126,10 @@ export const useGrammarStore = defineStore('grammar', () => {
     fail,
     reset,
     isLive,
+    setMistakeId,
   };
 });
+
+export function alignMistakeIds(ids: (number | null)[] | undefined, n: number): (number | null)[] {
+  return Array.from({ length: n }, (_, i) => ids?.[i] ?? null);
+}

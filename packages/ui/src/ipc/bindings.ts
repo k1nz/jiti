@@ -13,13 +13,22 @@ export const commands = {
 	settingsSet: (key: string, value: SettingsValue) => typedError<null, string>(__TAURI_INVOKE("settings_set", { key, value })),
 	getSelectedText: () => __TAURI_INVOKE<SelectedText>("get_selected_text"),
 	translate: (request: TranslateRequest_Deserialize) => typedError<TranslateResult, EngineErrorPayload>(__TAURI_INVOKE("translate", { request })),
-	grammarCheck: (request: GrammarRequest_Deserialize, onProgress: Channel<GrammarProgressEvent_Deserialize>) => typedError<GrammarResult_Serialize, EngineErrorPayload>(__TAURI_INVOKE("grammar_check", { request, onProgress })),
+	grammarCheck: (request: GrammarRequest_Deserialize, onProgress: Channel<GrammarProgressEvent_Deserialize>) => typedError<GrammarCheckOutcome_Serialize, EngineErrorPayload>(__TAURI_INVOKE("grammar_check", { request, onProgress })),
 	providersSnapshot: () => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_snapshot")),
 	providersSave: (config: ProvidersConfig_Deserialize) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_save", { config })),
 	providerSaveApiKey: (provider: string, apiKey: string) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("provider_save_api_key", { provider, apiKey })),
 	providerTest: (provider: string) => typedError<TestProviderResult, string>(__TAURI_INVOKE("provider_test", { provider })),
 	historyList: () => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_list")),
 	historyClear: () => typedError<number, string>(__TAURI_INVOKE("history_clear")),
+	mistakesList: (filter: MistakeFilter_Deserialize) => typedError<MistakeList, string>(__TAURI_INVOKE("mistakes_list", { filter })),
+	mistakesCreate: (item: NewMistake_Deserialize) => typedError<Mistake, string>(__TAURI_INVOKE("mistakes_create", { item })),
+	mistakesUpdate: (id: number, patch: MistakePatch_Deserialize) => typedError<Mistake, string>(__TAURI_INVOKE("mistakes_update", { id, patch })),
+	mistakesDelete: (id: number) => typedError<number, string>(__TAURI_INVOKE("mistakes_delete", { id })),
+	mistakesPreferences: () => typedError<MistakePreferences, string>(__TAURI_INVOKE("mistakes_preferences")),
+	mistakesSetPreferences: (prefs: MistakePreferences) => typedError<MistakePreferences, string>(__TAURI_INVOKE("mistakes_set_preferences", { prefs })),
+	/**  按当前筛选导出 Markdown。取消保存对话框时返回 `None`，不写盘。 */
+	mistakesExport: (filter: MistakeFilter_Deserialize) => typedError<string | null, string>(__TAURI_INVOKE("mistakes_export", { filter })),
+	mistakesAiReview: (filter: MistakeFilter_Deserialize) => typedError<AiReviewResult, EngineErrorPayload>(__TAURI_INVOKE("mistakes_ai_review", { filter })),
 	hotkeysSnapshot: () => __TAURI_INVOKE<HotkeysSnapshot>("hotkeys_snapshot"),
 	hotkeysSet: (id: HotkeyId, accelerator: string) => typedError<HotkeysSnapshot, string>(__TAURI_INVOKE("hotkeys_set", { id, accelerator })),
 	hotkeysReset: () => typedError<HotkeysSnapshot, string>(__TAURI_INVOKE("hotkeys_reset")),
@@ -49,6 +58,13 @@ export type AccessibilityStatus = {
 	hint: string | null,
 };
 
+export type AiReviewResult = {
+	summary: string,
+	analyzedCount: number,
+	engine: string,
+	durationMs: number,
+};
+
 /**  剪贴板稍后完成时补发（与对应热键的 epoch 对齐；可覆盖滞后的 AX/UIA）。 */
 export type CaptureChangedEvent = {
 	epoch: number,
@@ -65,6 +81,21 @@ export type EngineErrorPayload = {
 	message: string,
 	hint: string | null,
 	copyable: string,
+};
+
+/**  命令层结果：标准 `GrammarResult` 不掺持久化状态；收录 id 与 errors 按下标对齐。 */
+export type GrammarCheckOutcome = GrammarCheckOutcome_Serialize | GrammarCheckOutcome_Deserialize;
+
+/**  命令层结果：标准 `GrammarResult` 不掺持久化状态；收录 id 与 errors 按下标对齐。 */
+export type GrammarCheckOutcome_Deserialize = {
+	result: GrammarResult_Deserialize,
+	mistakeIds: (number | null)[],
+};
+
+/**  命令层结果：标准 `GrammarResult` 不掺持久化状态；收录 id 与 errors 按下标对齐。 */
+export type GrammarCheckOutcome_Serialize = {
+	result: GrammarResult_Serialize,
+	mistakeIds: (number | null)[],
 };
 
 /**  单条语法错误。`fragment` 是原文片段；偏移仅在唯一匹配时由 Rust 计算。 */
@@ -177,6 +208,100 @@ export type HotkeyPressedEvent = {
 export type HotkeysSnapshot = {
 	platform: string,
 	bindings: HotkeyBinding[],
+};
+
+export type Mistake = {
+	id: number,
+	createdAt: string,
+	sourceText: string,
+	fragment: string,
+	correction: string,
+	errorType: string | null,
+	severity: string,
+	explanation: string | null,
+	correctedSentence: string | null,
+	suggestions: string[],
+	engine: string | null,
+	sourceApp: string | null,
+	tags: string | null,
+	status: string,
+	meta: string | null,
+	serverId: string | null,
+	syncedAt: string | null,
+};
+
+export type MistakeFilter = MistakeFilter_Serialize | MistakeFilter_Deserialize;
+
+export type MistakeFilter_Deserialize = {
+	errorType?: string | null,
+	status?: string | null,
+	timeRange?: MistakeTimeRange | null,
+	limit?: number | null,
+	offset?: number | null,
+};
+
+export type MistakeFilter_Serialize = {
+	errorType?: string | null,
+	status?: string | null,
+	timeRange?: MistakeTimeRange | null,
+	limit?: number | null,
+	offset?: number | null,
+};
+
+export type MistakeList = {
+	items: Mistake[],
+	total: number,
+};
+
+export type MistakePatch = MistakePatch_Serialize | MistakePatch_Deserialize;
+
+export type MistakePatch_Deserialize = {
+	status?: string | null,
+	tags?: string | null,
+};
+
+export type MistakePatch_Serialize = {
+	status?: string | null,
+	tags?: string | null,
+};
+
+export type MistakePreferences = {
+	autoCollect?: boolean,
+	defaultStatus?: string,
+};
+
+export type MistakeTimeRange = "sevenDays" | "thirtyDays" | "all";
+
+export type NewMistake = NewMistake_Serialize | NewMistake_Deserialize;
+
+export type NewMistake_Deserialize = {
+	sourceText: string,
+	fragment: string,
+	correction: string,
+	errorType?: string | null,
+	severity?: string | null,
+	explanation?: string | null,
+	correctedSentence?: string | null,
+	suggestions?: string[],
+	engine?: string | null,
+	sourceApp?: string | null,
+	tags?: string | null,
+	status?: string | null,
+};
+
+export type NewMistake_Serialize = {
+	sourceText: string,
+	fragment: string,
+	correction: string,
+	errorType?: string | null,
+	severity?: string | null,
+	explanation?: string | null,
+	correctedSentence?: string | null,
+	suggestions: string[],
+	engine?: string | null,
+	sourceApp?: string | null,
+	tags?: string | null,
+	status?: string | null,
 };
 
 export type PermissionItem = {

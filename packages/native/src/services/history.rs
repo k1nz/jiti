@@ -1,13 +1,11 @@
 //! 历史 SQLite 服务（§6.1：`history` 表）。
 //!
-//! tauri-plugin-sql 的 Rust 侧查询 API 是 JS 专用（`DbPool::execute/select` 为
-//! pub(crate)），因此 M1 用 rusqlite 在 app data 里建同 schema 数据库；
-//! 表结构与 §6.1 SQL 逐列一致。
+//! 打开与迁移见 `database.rs`；本模块只负责 history 的读写。
 
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, Manager as _};
+use tauri::AppHandle;
 
 pub const HISTORY_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS history (
@@ -50,19 +48,8 @@ pub struct NewHistoryEntry {
     pub meta: Option<String>,
 }
 
-pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute_batch(HISTORY_SCHEMA)
-}
-
 pub fn open(app: &AppHandle) -> Result<Connection, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("取 app data 目录失败：{e}"))?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let conn = Connection::open(dir.join("jiti.db")).map_err(|e| e.to_string())?;
-    migrate(&conn).map_err(|e| e.to_string())?;
-    Ok(conn)
+    crate::services::database::open(app)
 }
 
 pub fn insert(conn: &Connection, entry: &NewHistoryEntry) -> Result<i64, String> {
@@ -146,7 +133,7 @@ mod tests {
     #[test]
     fn history_roundtrip_and_clear() {
         let conn = Connection::open_in_memory().unwrap();
-        migrate(&conn).unwrap();
+        crate::services::database::migrate(&conn).unwrap();
         let id = insert(&conn, &entry("Hello", "你好")).unwrap();
         assert!(id > 0);
         let rows = list(&conn, 10).unwrap();

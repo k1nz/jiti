@@ -7,6 +7,7 @@ pub mod deepl;
 pub mod error;
 pub mod grammar;
 pub mod llm;
+pub mod review;
 pub mod youdao;
 
 use serde::{Deserialize, Serialize};

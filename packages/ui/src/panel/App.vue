@@ -45,9 +45,12 @@ import { useGrammarStore } from '../stores/grammar';
 import Hotkeys from './Hotkeys.vue';
 import Onboarding from './Onboarding.vue';
 import GrammarView from './components/GrammarView.vue';
+import MistakesView from './components/MistakesView.vue';
+import { useMistakesStore } from '../stores/mistakes';
 
 const store = usePanelStore();
 const grammar = useGrammarStore();
+const mistakes = useMistakesStore();
 const searchEl = ref<HTMLInputElement | null>(null);
 
 const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = [
@@ -57,14 +60,6 @@ const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = 
   { key: 'history', label: '历史', icon: IconHistory },
   { key: 'settings', label: '设置', icon: IconSettings },
 ];
-
-const PLACEHOLDERS: Record<PanelMode, { icon: Component; line: string }> = {
-  translate: { icon: IconLanguage, line: '输入文本，或选中一段文字后按快捷键' },
-  grammar: { icon: IconAbc, line: '输入英语文本，或选中一段文字后按快捷键' },
-  mistakes: { icon: IconNotebook, line: '还没有错题，检查一次就有了' },
-  history: { icon: IconHistory, line: '暂无历史' },
-  settings: { icon: IconSettings, line: '设置加载中' },
-};
 
 const target = ref('zh');
 const translateStatus = ref<'idle' | 'loading' | 'done' | 'error'>('idle');
@@ -142,8 +137,8 @@ async function runGrammar(text = store.input) {
   onProgress.onmessage = (event) => grammar.applyProgress(id, event);
   const request: GrammarRequest_Deserialize = { text: input, engine: 'llm' };
   try {
-    const result = await unwrap(commands.grammarCheck(request, onProgress));
-    grammar.finish(id, result);
+    const outcome = await unwrap(commands.grammarCheck(request, onProgress));
+    grammar.finish(id, outcome);
     await reloadHistory();
   } catch (err) {
     grammar.fail(id, err as EngineErrorPayload);
@@ -287,8 +282,8 @@ async function saveSettings() {
 async function loadSettings() {
   try {
     settings.value = await unwrap(commands.providersSnapshot());
-  } catch (err) {
-    PLACEHOLDERS.settings.line = `设置加载失败：${String(err)}`;
+  } catch {
+    settings.value = null;
   }
   try {
     hotkeys.value = await commands.hotkeysSnapshot();
@@ -296,6 +291,15 @@ async function loadSettings() {
     // 热键快照失败时占位符走平台默认。
   }
   await refreshPermissions();
+  await loadMistakePrefs();
+}
+
+async function loadMistakePrefs() {
+  try {
+    mistakes.setPreferences(await unwrap(commands.mistakesPreferences()));
+  } catch {
+    // 偏好失败时沿用默认：自动收录、未掌握。
+  }
 }
 
 function onHotkeysUpdated(snapshot: HotkeysSnapshot) {
@@ -372,6 +376,38 @@ function onWriteHistory(event: Event) {
   if (!settings.value) return;
   settings.value.writeHistory = (event.target as HTMLInputElement).checked;
   void saveSettings();
+}
+
+async function onAutoCollect(event: Event) {
+  const autoCollect = (event.target as HTMLInputElement).checked;
+  try {
+    mistakes.setPreferences(
+      await unwrap(
+        commands.mistakesSetPreferences({
+          ...mistakes.preferences,
+          autoCollect,
+        }),
+      ),
+    );
+  } catch {
+    /* 保持当前偏好 */
+  }
+}
+
+async function onDefaultMistakeStatus(event: Event) {
+  const defaultStatus = (event.target as HTMLSelectElement).value;
+  try {
+    mistakes.setPreferences(
+      await unwrap(
+        commands.mistakesSetPreferences({
+          ...mistakes.preferences,
+          defaultStatus: defaultStatus || 'open',
+        }),
+      ),
+    );
+  } catch {
+    /* 保持当前偏好 */
+  }
 }
 
 async function saveKey(id: string) {
@@ -674,6 +710,8 @@ watch(
         @copy="copyResult"
       />
 
+      <MistakesView v-else-if="store.activeMode === 'mistakes'" />
+
       <section v-else-if="store.activeMode === 'history'" class="history-view">
         <div class="pane-header">
           <span>历史记录</span>
@@ -696,7 +734,7 @@ watch(
             <div class="history-input">{{ entry.input }}</div>
             <div class="history-output">{{ entry.output }}</div>
             <div class="meta">
-              <span>{{ entry.kind === 'grammar' ? '语法' : '翻译' }}</span>
+              <span>{{ entry.kind === 'grammar' ? '语法' : entry.kind === 'ai_review' ? '复习' : '翻译' }}</span>
               <span>{{ entry.engine }}</span>
               <span>{{ entry.durationMs }} ms</span>
               <span>{{ formatTime(entry.createdAt) }}</span>
@@ -747,6 +785,31 @@ watch(
             <input type="checkbox" :checked="settings.writeHistory" @change="onWriteHistory" />
             写历史
           </label>
+        </div>
+
+        <div class="pane-header">
+          <span>错题本</span>
+        </div>
+        <div class="setting-row">
+          <label class="check">
+            <input
+              type="checkbox"
+              :checked="mistakes.preferences.autoCollect !== false"
+              @change="onAutoCollect"
+            />
+            自动收录
+          </label>
+          <label class="field-label" for="mistake-status">默认状态</label>
+          <select
+            id="mistake-status"
+            class="native-select"
+            :value="mistakes.preferences.defaultStatus ?? 'open'"
+            @change="onDefaultMistakeStatus"
+          >
+            <option value="open">未掌握</option>
+            <option value="learned">已掌握</option>
+            <option value="archived">已归档</option>
+          </select>
         </div>
 
         <div v-if="settings" class="provider-stack" data-tauri-drag-region="false">
@@ -818,11 +881,6 @@ watch(
           </div>
         </div>
       </section>
-
-      <div v-else class="placeholder" :key="store.activeMode">
-        <component :is="PLACEHOLDERS[store.activeMode].icon" :size="28" :stroke-width="1.5" />
-        <p>{{ PLACEHOLDERS[store.activeMode].line }}</p>
-      </div>
     </main>
 
     <footer class="status">

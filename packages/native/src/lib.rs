@@ -42,6 +42,7 @@ pub fn run() {
             services::panel::show_panel(app, services::panel::Mode::Panel);
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(specta.invoke_handler())
         .setup(move |app| {
             // specta 事件（hotkey://pressed / capture://changed / engine://error）必须先挂上，

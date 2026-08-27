@@ -9,8 +9,16 @@ const TYPE_LABEL: Record<GrammarError['type'], string> = {
   style: '风格',
 };
 
+export type CollectState = 'pending' | 'collected' | 'idle' | 'hidden';
+
 defineProps<{
   error: GrammarError;
+  collectState?: CollectState;
+}>();
+
+const emit = defineEmits<{
+  collect: [];
+  uncollect: [];
 }>();
 </script>
 
@@ -30,5 +38,27 @@ defineProps<{
     <ul v-if="error.suggestions.length" class="grammar-suggestions">
       <li v-for="(item, index) in error.suggestions" :key="`${item}-${index}`">{{ item }}</li>
     </ul>
+    <div v-if="collectState && collectState !== 'hidden'" class="grammar-collect">
+      <button
+        v-if="collectState === 'pending'"
+        class="action subtle"
+        type="button"
+        disabled
+      >
+        待完成
+      </button>
+      <template v-else-if="collectState === 'collected'">
+        <span class="collect-on">已收录</span>
+        <button class="action subtle" type="button" @click="emit('uncollect')">取消收录</button>
+      </template>
+      <button
+        v-else
+        class="action subtle"
+        type="button"
+        @click="emit('collect')"
+      >
+        收录错题
+      </button>
+    </div>
   </article>
 </template>

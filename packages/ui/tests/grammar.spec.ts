@@ -47,6 +47,7 @@ describe('grammar store', () => {
     store.finish(id, sampleResult());
     expect(store.status).toBe('done');
     expect(store.result?.correctedText).toBe('He goes to school.');
+    expect(store.mistakeIds).toEqual([null]);
   });
 
   it('retrying 会清空临时总评、改写和卡片', () => {
@@ -104,5 +105,27 @@ describe('grammar store', () => {
     });
     expect(store.status).toBe('error');
     expect(store.error?.code).toBe('missing_key');
+  });
+
+  it('outcome 契约把 mistakeIds 与错误卡对齐，收录/取消可改映射', () => {
+    const store = useGrammarStore();
+    const id = store.begin();
+    store.finish(id, {
+      result: sampleResult(),
+      mistakeIds: [12],
+    });
+    expect(store.mistakeIds).toEqual([12]);
+    store.setMistakeId(0, null);
+    expect(store.mistakeIds).toEqual([null]);
+    store.setMistakeId(0, 99);
+    expect(store.mistakeIds).toEqual([99]);
+  });
+
+  it('流式重试会清掉已映射的收录 id', () => {
+    const store = useGrammarStore();
+    const id = store.begin();
+    store.finish(id, { result: sampleResult(), mistakeIds: [1] });
+    store.applyProgress(id, { kind: 'retrying', reason: '正在重新解析' });
+    expect(store.mistakeIds).toEqual([]);
   });
 });

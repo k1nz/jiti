@@ -16,6 +16,7 @@ tauri = { version = "2", features = ["macos-private-api", "tray-icon", "specta"]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-store = "2"
+tauri-plugin-dialog = "2"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript", "derive"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function", "serde_json"] }
 specta-typescript = "=0.0.12"

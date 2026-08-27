@@ -1,10 +1,11 @@
 # Jiti · 快速翻译 / 语法检查桌面工具 · 技术架构设计
 
 > 工作代号：**Jiti**（可随时改名）
-> 版本：**v0.2.2** · 2026-08-26 · 面向 macOS 与 Windows 10/11
+> 版本：**v0.3.0** · 2026-08-27 · 面向 macOS 与 Windows 10/11
 > 目标形态：Raycast 风格的小弹窗，全局快捷键唤起，常驻后台，秒级显示
 > v0.2 变更：依据 `native-feel-cross-platform-desktop` 技能完成架构审计（哲学八原则、WebView 存活清单、IPC 单契约、内存基线修正），依据 `design-taste-frontend` 重写 UI 层设计规范
-> v0.2.2 变更：M2 语法检查闭环（SSE+NDJSON、错误卡片、grammar 历史、进程内 LRU）；LanguageTool / 错题本仍属后续里程碑
+> v0.2.2 变更：M2 语法检查闭环（SSE+NDJSON、错误卡片、grammar 历史、进程内 LRU）
+> v0.3.0 变更：M3 错题本（版本化 SQLite、自动/手动收录、筛选、Markdown 导出、AI 复习）；LanguageTool / i18n / 主题 / 自启仍属后续里程碑
 
 ---
 
@@ -44,7 +45,7 @@
 | 渲染引擎 | macOS **WKWebView** / Windows **WebView2** | 系统自带、无捆绑浏览器；Win11 预装 WebView2，Win10 绝大多数已装 |
 | 前端框架 | **Vue 3 + Vite + TypeScript** | 熟悉、轻量；生态与 Tauri 配合顺 |
 | 后端语言 | **Rust** | 热键、窗口、选中读取、密钥托管、统一出网、LLM 流式 |
-| 数据库 | **SQLite**（tauri-plugin-sql） | 错题本 / 历史本地持久化 |
+| 数据库 | **SQLite**（rusqlite + `PRAGMA user_version`） | 错题本 / 历史本地持久化 |
 | 密钥存储 | 本地 `keys.json`（tauri-plugin-store） | API Key 不进 WebView；不走 Keychain，避免每次弹系统密码 |
 | IPC 契约 | **tauri-specta**（Rust 单源 → 生成 TS 类型） | 一份 schema，两端类型永远同步（详见 §3.5） |
 | 引擎 | **可插拔 Provider 层** | LLM（OpenAI 兼容）+ DeepL / 有道 / Google / Baidu |
@@ -128,12 +129,23 @@ Vue: 渲染译文 + 来源引擎 + 耗时；⌘C 复制 / Esc 隐藏
 Rust: 组装固定提示词 → reqwest SSE（20s 超时）
     → 按 SSE 帧抽出 token → 按 NDJSON 行解码
     → Channel 立即推 overall / correctedText / error / retrying / finished
-    → 聚合校验后返回 GrammarResult；成功写入 history（kind=grammar，改写进 output，全文进 meta）
+    → 聚合校验后返回 GrammarCheckOutcome；成功写入 history（kind=grammar），并按偏好自动收录错题
 Vue: 首条语义记录即出卡片；用户从不看到 JSON/SSE。⌘C 复制改写。
 结构解析失败：清空临时结果，非流式严格 JSON 再打一次。网络/鉴权/限流不重试。
 ```
 
-M2 边界：不做 LanguageTool、错题 CRUD、「收录错题」按钮、AI 复习、后台取消。LanguageTool 后续只加适配器并复用同一 `GrammarResult`。
+M2 边界：不做 LanguageTool、后台取消。LanguageTool 后续只加适配器并复用同一 `GrammarResult`。
+
+**错题本（M3：自动/手动收录 + 筛选 + 导出 + AI 复习）**
+```
+语法成功 ─▶ 若 autoCollect：事务批量写入 mistakes（无错误不写；失败整批回滚）
+         ─▶ 返回 GrammarCheckOutcome { result, mistakeIds }
+错题本 Tab ─▶ mistakes_list(filter) 类型/状态/时间筛选
+         ─▶ mistakes_export：按类型分组 Markdown，系统保存对话框
+         ─▶ mistakes_ai_review：聚合频次+代表例句 → LLM → history(kind=ai_review)
+```
+偏好在 `settings.json` 的独立 `mistakes` 键（默认 `autoCollect=true`、`defaultStatus=open`），不混进 Provider 配置。
+
 
 ### 3.5 IPC 契约：一份 schema，两端编译期同步
 
@@ -151,7 +163,7 @@ tauri_specta::ts::export(
 )
 ```
 
-如果将来演进为「每平台原生壳 + 共享 WebView」（§3.7 预留路径），同一份契约的 `shell ↔ core` 段改用 **UniFFI** 生成 Swift/C# 绑定；WebView ↔ core 段仍用 tauri-specta。契约文件 `docs/api-contract.md` 同时是未来后端 OpenAPI 的初稿。
+如果将来演进为「每平台原生壳 + 共享 WebView」（§3.7 预留路径），同一份契约的 `shell ↔ core` 段改用 **UniFFI** 生成 Swift/C# 绑定；WebView ↔ core 段仍用 tauri-specta。契约文件 [`docs/api-contract.md`](api-contract.md) 同时是未来后端 OpenAPI 的初稿。
 
 **两条不同的消息形状（必须分开设计）：**
 - **Request/Response**（同步语义，带 correlation ID）：`translate` / `grammar_check` / `mistakes_*` 等。
@@ -312,7 +324,7 @@ defaults:
 
 ### 5.3 语法检查适配器
 - **LLM（M2 主力）**：单次 chat/completions。`stream=true` 走 SSE；业务协议是 NDJSON 行（`overall` → `correctedText` → `error*` → `done`），不是自然语言打字机，也不是二次 JSON 请求。模型只返回原文片段；Rust 仅在片段唯一匹配时写入 Unicode 字符偏移。温度固定接近 0。解析失败（缺行 / 非法枚举 / 无 `done`）清空临时结果并**只重试一次**非流式严格 JSON。
-- **LanguageTool（M3+ 可选）**：enum-match 已留分支，M2 不实现配置和 UI。归一化目标仍是同一 `GrammarResult`。
+- **LanguageTool（后续可选）**：enum-match 已留分支，M2/M3 不实现配置和 UI。归一化目标仍是同一 `GrammarResult`。
 
 ### 5.4 结果标准化 Schema（两端共用，由 tauri-specta 生成）
 
@@ -347,7 +359,7 @@ interface GrammarError {
 ### 5.6 商业化（SaaS）预留边界
 1. **Transport 抽象**：Rust 侧「出网」封装 `Transport` trait，v1 是 `LocalTransport`（reqwest + keys.json）；未来加 `RemoteTransport`，UI 零改动。
 2. **Schema 预留**：`mistakes` 表 `server_id / synced_at`；provider 配置预留 `remote_profile`。
-3. **契约文档先行**：`docs/api-contract.md` 同时是未来后端 OpenAPI 初稿。
+3. **契约文档先行**：[`docs/api-contract.md`](api-contract.md) 同时是未来后端 OpenAPI 初稿。
 
 ---
 
@@ -363,7 +375,7 @@ interface GrammarError {
 
 条目少（两三个 Provider Key）不值得单独做业务表。SQLite 的价值在查询与体量；把 Key 写成历史库里的明文列，并不比 `keys.json` 更安全。
 
-### 6.1 SQLite（tauri-plugin-sql，版本化迁移 SQL）
+### 6.1 SQLite（rusqlite，`PRAGMA user_version` 版本化迁移）
 
 ```sql
 CREATE TABLE mistakes (
@@ -671,8 +683,8 @@ jiti/
 |---|---|---|
 | **M0 骨架** | tauri 初始化、Vue3 无边框隐藏窗、热键注册/显示/隐藏、**WebView 存活三件套（§4.6 A.1）**、首帧同步显示（A.2）、设置 store | 热键秒开的灰壳（不闪、不卡） |
 | **M1 翻译** | translate 命令（DeepL + 有道 + LLM）、选中捕获链（AX/UIA + 剪贴板兜底）、翻译 Tab、历史入库；**密钥三分：Key 进 `keys.json`，不进 Keychain、不进历史库**（§6） | 选中即译可用，保存 Key 不再弹系统密码 |
-| **M2 语法** | LLM NDJSON 流式 + 一次结构重试、错误卡片、grammar 历史；LanguageTool 仅留分支 | 语法检查可用（LanguageTool / 错题本不在本阶段） |
-| **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结 | 错题本能用 |
+| **M2 语法** | LLM NDJSON 流式 + 一次结构重试、错误卡片、grammar 历史；LanguageTool 仅留分支 | 语法检查可用 |
+| **M3 错题本** | CRUD + 过滤 + 导出 Markdown + AI 总结；语法自动/手动收录 | 错题本能用 |
 | **M4 设置完善** | 自启、i18n、主题、IME 专项 QA（快捷键重配已在设置页落地） | 可交付内测 |
 | **M5 打磨 + 门禁** | 流式优化、原生约定审计（§8.4 全过）、**ship-readiness 70 项审计（§12）**、**签名公证双端打包**（签名后 Keychain 可静默访问，为密钥升级铺路） | 可对外分发 |
 | **后置** | **密钥升级（可选，§6.2）**：`keys.json` → 加密库或 Keychain，一次性迁移、IPC 不变、Key 永不进历史表；Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |

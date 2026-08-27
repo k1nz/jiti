@@ -6,9 +6,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use reqwest::{Client, Response};
 
-/// 翻译请求级超时（§5.5：翻译 8s / 语法 20s）。
+/// 翻译请求级超时（§5.5：翻译 8s / 语法 20s；AI 复习复用语法超时）。
 pub const TRANSLATE_TIMEOUT: Duration = Duration::from_secs(8);
 pub const GRAMMAR_TIMEOUT: Duration = Duration::from_secs(20);
+pub const REVIEW_TIMEOUT: Duration = GRAMMAR_TIMEOUT;
 
 #[async_trait]
 pub trait Transport: Send + Sync {
