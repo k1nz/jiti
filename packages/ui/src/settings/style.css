@@ -1,0 +1,435 @@
+/* 设置窗：Raycast 式主从布局。token 沿用面板，强调色仍是 amber。 */
+
+html.settings-window {
+  --j-settings-sidebar: #e6e9ed;
+  --j-settings-main: #f4f6f8;
+  --j-settings-list: #ffffff;
+  --j-settings-nav-on: rgba(28, 33, 40, 0.08);
+  --j-settings-search: rgba(255, 255, 255, 0.72);
+  --j-switch-knob: #ffffff;
+  --j-switch-off: rgba(28, 33, 40, 0.18);
+}
+
+html.settings-window[data-theme='light'] {
+  --j-settings-sidebar: #e6e9ed;
+  --j-settings-main: #f4f6f8;
+  --j-settings-list: #ffffff;
+  --j-settings-nav-on: rgba(28, 33, 40, 0.08);
+  --j-settings-search: rgba(255, 255, 255, 0.72);
+  --j-switch-knob: #ffffff;
+  --j-switch-off: rgba(28, 33, 40, 0.18);
+}
+
+html.settings-window[data-theme='dark'] {
+  --j-settings-sidebar: #0c1014;
+  --j-settings-main: #141920;
+  --j-settings-list: #1b2128;
+  --j-settings-nav-on: rgba(230, 235, 241, 0.1);
+  --j-settings-search: rgba(255, 255, 255, 0.06);
+  --j-switch-knob: #f4f6f8;
+  --j-switch-off: rgba(230, 235, 241, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  html.settings-window:not([data-theme='light']) {
+    --j-settings-sidebar: #0c1014;
+    --j-settings-main: #141920;
+    --j-settings-list: #1b2128;
+    --j-settings-nav-on: rgba(230, 235, 241, 0.1);
+    --j-settings-search: rgba(255, 255, 255, 0.06);
+    --j-switch-knob: #f4f6f8;
+    --j-switch-off: rgba(230, 235, 241, 0.16);
+  }
+}
+
+html.settings-window,
+html.settings-window body {
+  overflow: hidden;
+  height: 100%;
+  background: var(--j-settings-main);
+}
+
+.settings-shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--j-settings-main);
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 220px;
+  padding: 16px 12px 12px;
+  background: var(--j-settings-sidebar);
+  border-right: 1px solid var(--j-border);
+}
+
+.settings-brand {
+  margin: 0 8px 12px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0 4px 14px;
+  padding: 0 10px;
+  background: var(--j-settings-search);
+  border: 1px solid var(--j-border);
+  border-radius: var(--j-radius-control);
+}
+
+.settings-search:focus-within {
+  border-color: var(--j-accent);
+  box-shadow: 0 0 0 2px var(--j-focus-ring);
+}
+
+.settings-search svg {
+  flex-shrink: 0;
+  color: var(--j-faint);
+}
+
+.settings-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--j-fg);
+  background: transparent;
+  border: none;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.settings-search input::placeholder {
+  color: var(--j-faint);
+}
+
+.settings-search input[type='search']::-webkit-search-decoration,
+.settings-search input[type='search']::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.settings-nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--j-fg);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--j-radius-control);
+  cursor: default;
+}
+
+.settings-nav-item svg {
+  flex-shrink: 0;
+  color: var(--j-muted);
+}
+
+.settings-nav-item:hover {
+  background: var(--j-hover);
+}
+
+.settings-nav-item.active {
+  background: var(--j-settings-nav-on);
+}
+
+.settings-nav-item.active svg {
+  color: var(--j-fg);
+}
+
+.settings-nav-item:focus-visible {
+  outline: 2px solid var(--j-focus-ring);
+  outline-offset: -2px;
+}
+
+.settings-nav-empty {
+  margin: 12px 8px;
+  color: var(--j-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.settings-detail {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 28px 36px 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--j-settings-main);
+}
+
+.settings-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40%;
+  color: var(--j-muted);
+  font-size: 13px;
+}
+
+.settings-group + .settings-group {
+  margin-top: 22px;
+}
+
+.settings-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  margin: 0 2px 8px;
+}
+
+.settings-group-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--j-muted);
+}
+
+.settings-group-head .spacer {
+  flex: 1;
+}
+
+.settings-list {
+  background: var(--j-settings-list);
+  border: 1px solid var(--j-border);
+  border-radius: var(--j-radius-card);
+  overflow: hidden;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 10px 14px;
+}
+
+.settings-item + .settings-item {
+  border-top: 1px solid var(--j-border);
+}
+
+.settings-item.stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.settings-item-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-item-copy > span,
+.settings-item-copy > strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-item-copy p {
+  margin: 3px 0 0;
+  color: var(--j-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-footnote {
+  margin: 8px 2px 0;
+  color: var(--j-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-shell .native-select {
+  min-width: 148px;
+  height: 32px;
+  padding: 0 28px 0 11px;
+  background-color: var(--j-hover);
+  border-color: transparent;
+}
+
+.settings-shell .action {
+  height: 32px;
+  background: var(--j-hover);
+  border-color: transparent;
+}
+
+.settings-shell .action.subtle {
+  background: transparent;
+}
+
+.settings-shell .action.subtle:hover,
+.settings-shell .action:hover {
+  background: var(--j-active);
+  border-color: transparent;
+}
+
+.settings-shell .action.primary:not(:disabled) {
+  color: var(--j-accent-ink);
+  background: var(--j-accent);
+}
+
+.settings-shell .text-input,
+.settings-shell .key-row input {
+  height: 32px;
+  background: var(--j-hover);
+  border-color: transparent;
+}
+
+.settings-shell .text-input:focus-visible,
+.settings-shell .key-row input:focus-visible,
+.settings-shell .native-select:focus-visible {
+  border-color: var(--j-accent);
+  background: var(--j-settings-list);
+}
+
+.settings-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-item-actions .text-input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  cursor: default;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  opacity: 0;
+}
+
+.switch-track {
+  display: block;
+  width: 38px;
+  height: 22px;
+  background: var(--j-switch-off);
+  border-radius: 999px;
+  transition: background-color 160ms ease;
+}
+
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: var(--j-switch-knob);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--j-accent);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(16px);
+}
+
+.switch input:disabled + .switch-track {
+  opacity: 0.45;
+}
+
+.switch input:focus-visible + .switch-track {
+  box-shadow: 0 0 0 2px var(--j-focus-ring);
+}
+
+.settings-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--j-warning) 10%, var(--j-settings-list));
+  border: 1px solid color-mix(in srgb, var(--j-warning) 28%, transparent);
+  border-radius: var(--j-radius-card);
+}
+
+.settings-banner strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-banner p {
+  margin: 0;
+  color: var(--j-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-shell .error-box {
+  margin-bottom: 18px;
+}
+
+.settings-shell .hotkeys {
+  margin: 0;
+}
+
+.settings-shell .hotkey-bind {
+  min-width: 132px;
+  height: 32px;
+  font-size: 12px;
+  background: var(--j-hover);
+  border-color: transparent;
+}
+
+.settings-shell .hotkey-bind.recording {
+  border-color: var(--j-accent);
+}
+
+.settings-shell .hotkey-warn {
+  margin: 8px 2px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-track::after {
+    transition: none;
+  }
+}

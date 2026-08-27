@@ -32,8 +32,8 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
 
     WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
         .title("Jiti")
-        .inner_size(560.0, 720.0)
-        .min_inner_size(420.0, 520.0)
+        .inner_size(840.0, 620.0)
+        .min_inner_size(680.0, 480.0)
         .resizable(true)
         .maximizable(false)
         .minimizable(true)

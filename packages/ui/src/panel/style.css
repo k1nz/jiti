@@ -1478,21 +1478,9 @@ textarea,
 
 html.settings-window,
 html.settings-window body {
-  overflow: auto;
+  overflow: hidden;
   height: 100%;
   background: var(--j-solid-bg);
-}
-
-.settings-page {
-  min-height: 100%;
-  padding: 18px 20px 28px;
-  background: var(--j-solid-bg);
-}
-
-.settings-page .settings-view {
-  height: auto;
-  max-width: 560px;
-  margin: 0 auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -5,6 +5,7 @@ import { bootPreferences } from '../bootstrap';
 import { disableBrowserChrome } from '../chrome';
 import { i18n } from '../i18n';
 import '../panel/style.css';
+import './style.css';
 
 disableBrowserChrome();
 

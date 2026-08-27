@@ -149,30 +149,35 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="hotkeys">
-    <div class="pane-header">
-      <span>{{ t('hotkeys.title') }}</span>
+  <div class="hotkeys settings-group">
+    <div class="settings-group-head">
+      <h2>{{ t('hotkeys.title') }}</h2>
+      <span class="spacer" />
       <button class="action subtle" type="button" @click="reset">{{ t('hotkeys.reset') }}</button>
     </div>
-    <p class="muted settings-note">{{ t('hotkeys.note') }}</p>
-    <div
-      v-for="bind in snapshot.bindings"
-      :key="bind.id"
-      class="hotkey-row"
-    >
-      <span class="hotkey-title">{{ titleFor(bind.id) }}</span>
-      <button
-        class="hotkey-bind"
-        :class="{ recording: recording === bind.id, warn: !bind.registered }"
-        type="button"
-        tabindex="0"
-        :aria-label="t('hotkeys.aria', { title: titleFor(bind.id), display: bind.display })"
-        :aria-pressed="recording === bind.id"
-        @click="startRecord(bind.id, $event)"
+    <div class="settings-list">
+      <div
+        v-for="bind in snapshot.bindings"
+        :key="bind.id"
+        class="settings-item"
       >
-        {{ recording === bind.id ? t('hotkeys.press') : bind.display }}
-      </button>
+        <div class="settings-item-copy">
+          <span>{{ titleFor(bind.id) }}</span>
+        </div>
+        <button
+          class="hotkey-bind"
+          :class="{ recording: recording === bind.id, warn: !bind.registered }"
+          type="button"
+          tabindex="0"
+          :aria-label="t('hotkeys.aria', { title: titleFor(bind.id), display: bind.display })"
+          :aria-pressed="recording === bind.id"
+          @click="startRecord(bind.id, $event)"
+        >
+          {{ recording === bind.id ? t('hotkeys.press') : bind.display }}
+        </button>
+      </div>
     </div>
+    <p class="settings-footnote">{{ t('hotkeys.note') }}</p>
     <p v-if="error" class="hotkey-warn">{{ error }}</p>
     <p v-else-if="unregistered.length" class="hotkey-warn">
       {{ t('hotkeys.unregistered', { keys: unregistered.map((bind) => bind.display).join(t('footer.listJoin')) }) }}
