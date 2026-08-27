@@ -6,7 +6,9 @@ use serde_json::json;
 
 use crate::services::transport::Transport;
 
-use super::{EngineError, ProviderConfig, TranslateRequest, TranslateResult, provider_label};
+use super::{
+    EngineError, ProviderConfig, TranslateRequest, TranslateResult, lang, provider_label,
+};
 
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
@@ -43,15 +45,18 @@ pub async fn translate(
         });
     };
 
+    let source = lang::resolve_source(req.from.as_deref(), &req.text);
+    let target_name = lang::language_name(&req.to);
     let system = format!(
-        "You are a professional translation engine. Translate the user's text into {}. Output only the translated text. Do not add explanations, quotes, markdown, or JSON.",
-        req.to
+        "You are a professional translation engine. Translate the user's text into {target_name}. Output only the translated text in {target_name}. Never copy the source unchanged when the target language differs. Do not add explanations, quotes, markdown, or JSON."
     );
-    let user = match &req.from {
-        Some(from) if !from.eq_ignore_ascii_case("auto") => {
-            format!("Source language: {from}\n\n{}", req.text)
-        }
-        _ => req.text.clone(),
+    let user = match &source {
+        Some(from) => format!(
+            "Source language: {}\n\n{}",
+            lang::language_name(from),
+            req.text
+        ),
+        None => req.text.clone(),
     };
     let body = json!({
         "model": model,
@@ -110,7 +115,7 @@ pub async fn translate(
         engine: provider.into(),
         output,
         input: req.text.clone(),
-        detected_from: None,
+        detected_from: source,
         target: req.to.clone(),
         duration_ms: 0,
     })
@@ -226,6 +231,34 @@ mod tests {
         let out = out.expect("mock LLM 应成功");
         assert_eq!(out.output, "你好，世界");
         assert_eq!(out.engine, "LLM");
+        assert_eq!(out.detected_from.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn llm_short_latin_uses_english_and_chinese_names() {
+        let mut server = mockito::Server::new();
+        let base = format!("{}/v1", server.url());
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .match_body(mockito::Matcher::Regex(
+                r#"Simplified Chinese[\s\S]*Source language: English[\s\S]*Epoch"#.into(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"choices":[{"message":{"content":"纪元"}}]}"#)
+            .create();
+        let out = tauri::async_runtime::block_on(async {
+            let req = TranslateRequest {
+                text: "Epoch".into(),
+                from: None,
+                to: "zh".into(),
+            };
+            let transport = ReqwestTransport::default();
+            translate(&cfg(&base), "sk-test", &req, &transport).await
+        });
+        mock.assert();
+        let out = out.expect("mock LLM 应成功");
+        assert_eq!(out.output, "纪元");
+        assert_eq!(out.detected_from.as_deref(), Some("en"));
     }
 
     #[test]

@@ -281,6 +281,18 @@ input {
   flex: 1;
 }
 
+.lang-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lang-arrow {
+  color: var(--j-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+
 .native-select {
   height: 28px;
   padding: 0 26px 0 9px;

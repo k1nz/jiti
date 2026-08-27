@@ -7,7 +7,7 @@ use serde_json::json;
 use crate::services::transport::Transport;
 
 use super::{
-    EngineError, ProviderConfig, TranslateRequest, TranslateResult, provider_label,
+    EngineError, ProviderConfig, TranslateRequest, TranslateResult, lang, provider_label,
 };
 
 #[derive(Debug, Deserialize)]
@@ -40,10 +40,9 @@ pub async fn translate(
         "text": [req.text.clone()],
         "target_lang": normalize_deepl_lang(&req.to),
     });
-    if let Some(from) = &req.from {
-        if !from.eq_ignore_ascii_case("auto") {
-            body["source_lang"] = json!(normalize_deepl_lang(from));
-        }
+    let source = lang::resolve_source(req.from.as_deref(), &req.text);
+    if let Some(from) = &source {
+        body["source_lang"] = json!(normalize_deepl_lang(from));
     }
 
     let auth = format!("DeepL-Auth-Key {api_key}");
@@ -88,7 +87,8 @@ pub async fn translate(
         detected_from: t
             .detected_source_language
             .as_deref()
-            .map(normalize_detected),
+            .map(normalize_detected)
+            .or_else(|| source.map(|s| normalize_detected(&s))),
         target: normalize_target(&req.to),
         duration_ms: 0,
     })
@@ -220,6 +220,35 @@ mod tests {
         assert_eq!(out.detected_from.as_deref(), Some("en"));
         assert_eq!(out.target, "zh");
         assert_eq!(out.engine, "DeepL");
+    }
+
+    #[test]
+    fn deepl_short_latin_sends_english_source() {
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/v2/translate")
+            .match_body(mockito::Matcher::PartialJson(json!({
+                "text": ["Epoch"],
+                "source_lang": "EN",
+                "target_lang": "ZH",
+            })))
+            .with_status(200)
+            .with_body(r#"{"translations":[{"detected_source_language":"EN","text":"纪元"}]}"#)
+            .create();
+        let out = tauri::async_runtime::block_on(async {
+            let req = TranslateRequest {
+                text: "Epoch".into(),
+                from: None,
+                to: "zh".into(),
+            };
+            let transport = ReqwestTransport::default();
+            translate(&cfg(&server.url()), "test-key", &req, &transport).await
+        });
+        mock.assert();
+        let out = out.expect("mock DeepL 应成功");
+        assert_eq!(out.output, "纪元");
+        assert_eq!(out.detected_from.as_deref(), Some("en"));
+        assert_eq!(out.target, "zh");
     }
 
     #[test]

@@ -38,6 +38,13 @@ import {
   shouldApplyDelayedCapture,
   shouldAutoSubmitOnCapture,
 } from '../capture';
+import {
+  guessTarget,
+  languagePairLabel,
+  resolveSource,
+  type LangCode,
+  type SourceChoice,
+} from '../language';
 import { isRecordingHotkey, shouldHidePanelOnEscape } from '../hotkeys';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
@@ -61,7 +68,8 @@ const TABS: ReadonlyArray<{ key: PanelMode; label: string; icon: Component }> = 
   { key: 'settings', label: '设置', icon: IconSettings },
 ];
 
-const target = ref('zh');
+const source = ref<SourceChoice>('auto');
+const target = ref<LangCode>('zh');
 const translateStatus = ref<'idle' | 'loading' | 'done' | 'error'>('idle');
 const translateResult = ref<TranslateResult | null>(null);
 const translateError = ref<EngineErrorPayload | null>(null);
@@ -99,14 +107,6 @@ function onShellClick(e: MouseEvent) {
   }
 }
 
-function hasCjk(text: string) {
-  return /[\u3400-\u4dbf\u4e00-\u9fff]/.test(text);
-}
-
-function guessTarget(text: string) {
-  return hasCjk(text) ? 'en' : 'zh';
-}
-
 async function runTranslate(text = store.input) {
   const input = text.trim();
   if (!input) return;
@@ -115,7 +115,7 @@ async function runTranslate(text = store.input) {
   translateResult.value = null;
   const request: TranslateRequest_Deserialize = {
     text: input,
-    from: hasCjk(input) ? 'zh' : null,
+    from: resolveSource(source.value, input),
     to: target.value,
   };
   try {
@@ -163,6 +163,7 @@ function applyCapturedText(selected: SelectedText, epoch: number) {
   lastCommitted.value = selected.text;
   if (!shouldAutoSubmitOnCapture(store.activeMode, selected.text)) return;
   if (store.activeMode === 'translate') {
+    source.value = 'auto';
     target.value = guessTarget(selected.text);
     void runTranslate(selected.text);
     return;
@@ -651,10 +652,18 @@ watch(
     <main class="content">
       <section v-if="store.activeMode === 'translate'" class="translate-view">
         <div class="toolbar">
-          <select v-model="target" class="native-select" aria-label="目标语言">
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
+          <div class="lang-pair">
+            <select v-model="source" class="native-select" aria-label="源语言">
+              <option value="auto">自动</option>
+              <option value="zh">中文</option>
+              <option value="en">英语</option>
+            </select>
+            <span class="lang-arrow" aria-hidden="true">→</span>
+            <select v-model="target" class="native-select" aria-label="目标语言">
+              <option value="zh">中文</option>
+              <option value="en">英语</option>
+            </select>
+          </div>
           <button
             class="action"
             type="button"
@@ -691,7 +700,7 @@ watch(
           <p class="output">{{ translateResult.output }}</p>
           <div class="meta">
             <span>{{ translateResult.engine }}</span>
-            <span v-if="translateResult.detectedFrom">{{ translateResult.detectedFrom }} → {{ translateResult.target }}</span>
+            <span v-if="translateResult.detectedFrom || translateResult.target">{{ languagePairLabel(translateResult.detectedFrom, translateResult.target) }}</span>
             <span>{{ translateResult.durationMs }} ms</span>
           </div>
         </div>
