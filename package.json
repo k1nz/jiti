@@ -12,6 +12,7 @@
     "ui:test": "pnpm --dir packages/ui test",
     "ui:typecheck": "pnpm --dir packages/ui typecheck",
     "test": "pnpm --dir packages/ui test && cargo test --manifest-path packages/native/Cargo.toml",
+    "clean": "cargo clean --manifest-path packages/native/Cargo.toml",
     "check:versions": "node scripts/check-versions.mjs",
     "check:fmt": "cargo fmt --manifest-path packages/native/Cargo.toml --all -- --check",
     "check:clippy": "cargo clippy --manifest-path packages/native/Cargo.toml --all-targets"
