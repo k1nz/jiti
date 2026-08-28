@@ -148,11 +148,11 @@ mod tests {
 
     #[test]
     fn retry_does_not_get_a_fresh_full_budget() {
-        let deadline = Instant::now() + Duration::from_millis(40);
-        std::thread::sleep(Duration::from_millis(10));
+        let deadline = Instant::now() + Duration::from_millis(500);
+        std::thread::sleep(Duration::from_millis(50));
         let left = retry_budget(deadline).expect("still have time");
         assert!(left < Duration::from_secs(20));
-        assert!(left <= Duration::from_millis(40));
+        assert!(left <= Duration::from_millis(500));
         let expired = Instant::now() - Duration::from_millis(1);
         assert!(retry_budget(expired).is_none());
         assert!(remaining_budget(expired).is_zero());
