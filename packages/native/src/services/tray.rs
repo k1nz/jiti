@@ -27,7 +27,7 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => crate::services::panel::show_panel(app, Mode::Panel),
             "settings" => {
-                let _ = crate::services::settings_window::open(app);
+                crate::services::settings_window::open_detached(app);
             }
             _ => {}
         })

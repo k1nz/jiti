@@ -22,6 +22,7 @@ pub fn preferences_update(
 
 #[tauri::command]
 #[specta::specta]
-pub fn open_settings(app: AppHandle) -> Result<(), String> {
+pub async fn open_settings(app: AppHandle) -> Result<(), String> {
+    // Windows：同步命令里 build() 会与 WebView2 死锁（白屏、关闭按钮无响应）。
     settings_window::open(&app)
 }
