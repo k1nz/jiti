@@ -114,9 +114,11 @@ pub fn begin_clipboard_fallback(app: AppHandle, epoch: u32) {
     }
 }
 
-/// Windows 剪贴板 Ctrl+C 必须在源窗口仍是前台时发送；聚焦面板要等修饰键松开。
-#[cfg(target_os = "windows")]
+/// 剪贴板模拟复制必须在源窗口仍是前台、且热键修饰键已松开时发送。
 pub(crate) fn wait_for_hotkey_modifiers_up() {
+    #[cfg(target_os = "macos")]
+    macos::wait_for_hotkey_modifiers_up();
+    #[cfg(target_os = "windows")]
     windows::wait_for_hotkey_modifiers_up();
 }
 

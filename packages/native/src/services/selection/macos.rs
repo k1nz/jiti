@@ -255,7 +255,7 @@ fn ax_attr<T: ConcreteType>(element: &AXUIElement, attribute: &CFString) -> Opti
 }
 
 /// 等用户松开当前热键的修饰键，避免合成复制变成 ⌥⌘C / ⌃⇧C。
-fn wait_for_hotkey_modifiers_up() {
+pub(super) fn wait_for_hotkey_modifiers_up() {
     for _ in 0..30 {
         let flags = CGEventSource::flags_state(CGEventSourceStateID::HIDSystemState);
         if !flags.contains(CGEventFlags::MaskAlternate)

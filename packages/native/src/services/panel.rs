@@ -336,10 +336,10 @@ fn reveal(win: &WebviewWindow) {
 }
 
 /// 把键盘交给面板。须在 `reveal` 之后调用：macOS 的 `set_focus` 要求窗口已可见。
-/// Windows 翻译/语法热键要等剪贴板 Ctrl+C 打到源窗口之后再抢前台，否则兜底会复制面板自己。
+/// 翻译/语法热键要等剪贴板模拟复制打到源窗口之后再抢前台，否则源应用失焦、选区被清，
+/// 兜底会复制空内容或面板自己。
 fn request_panel_focus(win: &WebviewWindow, capturing: bool) {
     if should_defer_focus_for_clipboard(capturing) {
-        #[cfg(target_os = "windows")]
         schedule_deferred_focus(win);
         return;
     }
@@ -347,15 +347,14 @@ fn request_panel_focus(win: &WebviewWindow, capturing: bool) {
 }
 
 pub(crate) fn should_defer_focus_for_clipboard(capturing: bool) -> bool {
-    cfg!(target_os = "windows") && capturing
+    capturing
 }
 
-#[cfg(target_os = "windows")]
 fn schedule_deferred_focus(win: &WebviewWindow) {
     let win = win.clone();
     std::thread::spawn(move || {
         crate::services::selection::wait_for_hotkey_modifiers_up();
-        // 剪贴板路径在修饰键松开后立刻 SendInput，再等 ~180ms 读结果。
+        // 剪贴板路径在修饰键松开后立刻发复制，再等 ~180ms 读结果。
         std::thread::sleep(Duration::from_millis(320));
         let app = win.app_handle().clone();
         let focused = win.clone();
@@ -855,11 +854,8 @@ mod tests {
     }
 
     #[test]
-    fn windows_translate_hotkey_defers_focus_for_clipboard() {
-        assert_eq!(
-            should_defer_focus_for_clipboard(true),
-            cfg!(target_os = "windows")
-        );
+    fn translate_hotkey_defers_focus_for_clipboard() {
+        assert!(should_defer_focus_for_clipboard(true));
         assert!(!should_defer_focus_for_clipboard(false));
     }
 
