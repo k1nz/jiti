@@ -128,7 +128,7 @@ pub(crate) fn show_panel_inner(app: &AppHandle, mode: Mode, follow_cursor: bool)
             reveal(&win);
             mark_shown();
             if crate::services::prefs::load_prefs(&inner).focus_on_invoke {
-                request_panel_focus(&win);
+                request_panel_focus(&win, capture);
             }
         }
         let _ = crate::services::selection::HotkeyPressedEvent {
@@ -336,9 +336,36 @@ fn reveal(win: &WebviewWindow) {
 }
 
 /// 把键盘交给面板。须在 `reveal` 之后调用：macOS 的 `set_focus` 要求窗口已可见。
-/// Windows 剪贴板兜底依赖源窗口仍是前台，抢焦点后会主动跳过，以免 Ctrl+C 打到搜索框。
-fn request_panel_focus(win: &WebviewWindow) {
+/// Windows 翻译/语法热键要等剪贴板 Ctrl+C 打到源窗口之后再抢前台，否则兜底会复制面板自己。
+fn request_panel_focus(win: &WebviewWindow, capturing: bool) {
+    if should_defer_focus_for_clipboard(capturing) {
+        #[cfg(target_os = "windows")]
+        schedule_deferred_focus(win);
+        return;
+    }
     let _ = win.set_focus();
+}
+
+pub(crate) fn should_defer_focus_for_clipboard(capturing: bool) -> bool {
+    cfg!(target_os = "windows") && capturing
+}
+
+#[cfg(target_os = "windows")]
+fn schedule_deferred_focus(win: &WebviewWindow) {
+    let win = win.clone();
+    std::thread::spawn(move || {
+        crate::services::selection::wait_for_hotkey_modifiers_up();
+        // 剪贴板路径在修饰键松开后立刻 SendInput，再等 ~180ms 读结果。
+        std::thread::sleep(Duration::from_millis(320));
+        let app = win.app_handle().clone();
+        let focused = win.clone();
+        let _ = app.run_on_main_thread(move || {
+            if !SHOWN.load(Ordering::SeqCst) {
+                return;
+            }
+            let _ = focused.set_focus();
+        });
+    });
 }
 
 fn conceal(win: &WebviewWindow) {
@@ -673,9 +700,7 @@ pub mod windows {
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
-    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     pub fn position_near_cursor(win: &WebviewWindow) {
@@ -747,8 +772,7 @@ pub mod windows {
             .spawn(move || {
                 let mut was_down = false;
                 loop {
-                    let down =
-                        mouse_button_down(VK_LBUTTON) || mouse_button_down(VK_RBUTTON);
+                    let down = mouse_button_down(VK_LBUTTON) || mouse_button_down(VK_RBUTTON);
                     if down && !was_down {
                         let app_for_main = app.clone();
                         let _ = app.run_on_main_thread(move || {
@@ -828,6 +852,15 @@ mod tests {
         assert!(Mode::Translate.captures_selection());
         assert!(Mode::Grammar.captures_selection());
         assert!(!Mode::Panel.captures_selection());
+    }
+
+    #[test]
+    fn windows_translate_hotkey_defers_focus_for_clipboard() {
+        assert_eq!(
+            should_defer_focus_for_clipboard(true),
+            cfg!(target_os = "windows")
+        );
+        assert!(!should_defer_focus_for_clipboard(false));
     }
 
     #[test]

@@ -114,6 +114,12 @@ pub fn begin_clipboard_fallback(app: AppHandle, epoch: u32) {
     }
 }
 
+/// Windows 剪贴板 Ctrl+C 必须在源窗口仍是前台时发送；聚焦面板要等修饰键松开。
+#[cfg(target_os = "windows")]
+pub(crate) fn wait_for_hotkey_modifiers_up() {
+    windows::wait_for_hotkey_modifiers_up();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
