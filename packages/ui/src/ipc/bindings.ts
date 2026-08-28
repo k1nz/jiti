@@ -15,7 +15,7 @@ export const commands = {
 	settingsGet: (key: string) => typedError<"Null" | boolean | number | null | string | SettingsValue[] | ([string, SettingsValue])[] | null, string>(__TAURI_INVOKE("settings_get", { key })),
 	settingsSet: (key: string, value: SettingsValue) => typedError<null, string>(__TAURI_INVOKE("settings_set", { key, value })),
 	getSelectedText: () => __TAURI_INVOKE<SelectedText>("get_selected_text"),
-	translate: (request: TranslateRequest_Deserialize) => typedError<TranslateResult, EngineErrorPayload>(__TAURI_INVOKE("translate", { request })),
+	translate: (request: TranslateRequest_Deserialize) => typedError<TranslateResult_Serialize, EngineErrorPayload>(__TAURI_INVOKE("translate", { request })),
 	grammarCheck: (request: GrammarRequest_Deserialize, onProgress: Channel<GrammarProgressEvent_Deserialize>) => typedError<GrammarCheckOutcome_Serialize, EngineErrorPayload>(__TAURI_INVOKE("grammar_check", { request, onProgress })),
 	providersSnapshot: () => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_snapshot")),
 	providersSave: (config: ProvidersConfig_Deserialize) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_save", { config })),
@@ -44,6 +44,9 @@ export const commands = {
 	openPermissionSettings: (id: string) => typedError<boolean, string>(__TAURI_INVOKE("open_permission_settings", { id })),
 	completeOnboarding: () => typedError<PermissionsSnapshot, string>(__TAURI_INVOKE("complete_onboarding")),
 	restartApp: () => __TAURI_INVOKE<void>("restart_app"),
+	appVersion: () => __TAURI_INVOKE<string>("app_version"),
+	checkForUpdates: () => __TAURI_INVOKE<UpdateCheckResult_Serialize>("check_for_updates"),
+	openExternalUrl: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_external_url", { url })),
 };
 
 /** Events */
@@ -52,6 +55,7 @@ export const events = {
 	engineError: makeEvent<EngineErrorEvent>("engine://error"),
 	hotkeyPressed: makeEvent<HotkeyPressedEvent>("hotkey://pressed"),
 	preferencesChanged: makeEvent<PreferencesChangedEvent>("preferences://changed"),
+	translateEnriched: makeEvent<TranslateEnrichedEvent_Deserialize>("translate://enriched"),
 };
 
 /* Types */
@@ -90,6 +94,60 @@ export type EngineErrorPayload = {
 	message: string,
 	hint: string | null,
 	copyable: string,
+};
+
+export type EnglishEnrichment = EnglishEnrichment_Serialize | EnglishEnrichment_Deserialize;
+
+export type EnglishEnrichment_Deserialize = {
+	/**  词卡对应的英语单词/短语（英译中时是原文，中译英时是译文）。 */
+	word?: string | null,
+	phonetic?: string | null,
+	/**  `data:audio/…;base64,…`，供 WebView 播放；无音频时走系统 TTS。 */
+	audioDataUrl?: string | null,
+	mnemonic?: string | null,
+	mnemonicZh?: string | null,
+	roots?: string | null,
+	examples?: EnglishExample_Deserialize[],
+	senses?: EnglishSense_Deserialize[],
+};
+
+export type EnglishEnrichment_Serialize = {
+	/**  词卡对应的英语单词/短语（英译中时是原文，中译英时是译文）。 */
+	word?: string | null,
+	phonetic?: string | null,
+	/**  `data:audio/…;base64,…`，供 WebView 播放；无音频时走系统 TTS。 */
+	audioDataUrl?: string | null,
+	mnemonic?: string | null,
+	mnemonicZh?: string | null,
+	roots?: string | null,
+	examples?: EnglishExample_Serialize[],
+	senses?: EnglishSense_Serialize[],
+};
+
+export type EnglishExample = EnglishExample_Serialize | EnglishExample_Deserialize;
+
+export type EnglishExample_Deserialize = {
+	text: string,
+	translation?: string | null,
+};
+
+export type EnglishExample_Serialize = {
+	text: string,
+	translation?: string | null,
+};
+
+export type EnglishSense = EnglishSense_Serialize | EnglishSense_Deserialize;
+
+export type EnglishSense_Deserialize = {
+	pos?: string | null,
+	definition: string,
+	translation?: string | null,
+};
+
+export type EnglishSense_Serialize = {
+	pos?: string | null,
+	definition: string,
+	translation?: string | null,
 };
 
 /**  命令层结果：标准 `GrammarResult` 不掺持久化状态；收录 id 与 errors 按下标对齐。 */
@@ -443,6 +501,25 @@ export type TestProviderResult = {
 
 export type ThemePref = "system" | "light" | "dark";
 
+/**  译文已返回后补发词卡；面板按 input+output 对上当前结果再挂上。 */
+export type TranslateEnrichedEvent = TranslateEnrichedEvent_Serialize | TranslateEnrichedEvent_Deserialize;
+
+/**  译文已返回后补发词卡；面板按 input+output 对上当前结果再挂上。 */
+export type TranslateEnrichedEvent_Deserialize = {
+	input: string,
+	output: string,
+	word: string,
+	enrichment?: EnglishEnrichment_Deserialize | null,
+};
+
+/**  译文已返回后补发词卡；面板按 input+output 对上当前结果再挂上。 */
+export type TranslateEnrichedEvent_Serialize = {
+	input: string,
+	output: string,
+	word: string,
+	enrichment?: EnglishEnrichment_Serialize | null,
+};
+
 /**  翻译请求：§5.2 统一进出参 `{text, from?, to}`。 */
 export type TranslateRequest = TranslateRequest_Serialize | TranslateRequest_Deserialize;
 
@@ -461,16 +538,61 @@ export type TranslateRequest_Serialize = {
 };
 
 /**  翻译结果：§5.4 标准化 Schema。 */
-export type TranslateResult = {
+export type TranslateResult = TranslateResult_Serialize | TranslateResult_Deserialize;
+
+/**  翻译结果：§5.4 标准化 Schema。 */
+export type TranslateResult_Deserialize = {
 	engine: string,
 	output: string,
 	input: string,
 	detectedFrom: string | null,
 	target: string,
 	durationMs: number,
+	/**  英语短词词卡；失败时省略，不影响译文。 */
+	enrichment?: EnglishEnrichment_Deserialize | null,
+	/**  词卡对应的英语单词；加载态即可显示。 */
+	enrichmentWord?: string | null,
+	/**  后台正在拉词卡；完成后经 `translate://enriched` 清除。 */
+	enrichmentPending?: boolean,
+};
+
+/**  翻译结果：§5.4 标准化 Schema。 */
+export type TranslateResult_Serialize = {
+	engine: string,
+	output: string,
+	input: string,
+	detectedFrom: string | null,
+	target: string,
+	durationMs: number,
+	/**  英语短词词卡；失败时省略，不影响译文。 */
+	enrichment?: EnglishEnrichment_Serialize | null,
+	/**  词卡对应的英语单词；加载态即可显示。 */
+	enrichmentWord?: string | null,
+	/**  后台正在拉词卡；完成后经 `translate://enriched` 清除。 */
+	enrichmentPending?: boolean,
 };
 
 export type UiLocale = "system" | "zh-CN" | "en-US";
+
+export type UpdateCheckResult = UpdateCheckResult_Serialize | UpdateCheckResult_Deserialize;
+
+export type UpdateCheckResult_Deserialize = {
+	status: UpdateStatus,
+	currentVersion: string,
+	latestVersion?: string | null,
+	releaseUrl?: string | null,
+	message?: string | null,
+};
+
+export type UpdateCheckResult_Serialize = {
+	status: UpdateStatus,
+	currentVersion: string,
+	latestVersion?: string | null,
+	releaseUrl?: string | null,
+	message?: string | null,
+};
+
+export type UpdateStatus = "upToDate" | "available" | "error";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

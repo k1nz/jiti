@@ -23,6 +23,7 @@ import type {
   TestProviderResult,
   ThemePref,
   UiLocale,
+  UpdateCheckResult,
 } from '../ipc/bindings';
 import { unwrap } from '../ipc/unwrap';
 import { useMistakesStore } from '../stores/mistakes';
@@ -50,6 +51,9 @@ const NAV: ReadonlyArray<{
       'settings.focusOnInvoke',
       'settings.permissions',
       'permissions.accessibility.title',
+      'settings.about',
+      'settings.version',
+      'settings.checkUpdate',
     ],
   },
   {
@@ -90,6 +94,9 @@ const testResults = ref<Record<string, TestProviderResult | null>>({});
 const testing = ref<Record<string, boolean>>({});
 const saveError = ref<EngineErrorPayload | null>(null);
 const autostartBusy = ref(false);
+const appVersion = ref('');
+const updateCheck = ref<UpdateCheckResult | null>(null);
+const checkingUpdate = ref(false);
 const searchQuery = ref('');
 const activeSection = ref<SettingsSection>('general');
 const searchEl = ref<HTMLInputElement | null>(null);
@@ -192,6 +199,11 @@ async function loadAll() {
   }
   await refreshPermissions();
   await loadMistakePrefs();
+  try {
+    appVersion.value = await commands.appVersion();
+  } catch {
+    appVersion.value = '';
+  }
 }
 
 async function patchPrefs(patch: PreferencesPatch) {
@@ -319,6 +331,51 @@ async function openAccessibility() {
   await unwrap(commands.openPermissionSettings('accessibility'));
   startPermissionPoll();
 }
+
+async function checkForUpdates() {
+  checkingUpdate.value = true;
+  try {
+    updateCheck.value = await commands.checkForUpdates();
+  } catch (err) {
+    updateCheck.value = {
+      status: 'error',
+      currentVersion: appVersion.value,
+      latestVersion: null,
+      releaseUrl: null,
+      message: String(err),
+    };
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+
+async function openRelease() {
+  const url = updateCheck.value?.releaseUrl;
+  if (!url) return;
+  try {
+    await unwrap(commands.openExternalUrl(url));
+  } catch (err) {
+    saveError.value = {
+      provider: 'updates',
+      code: 'network',
+      message: String(err),
+      hint: url,
+      copyable: `[jiti] updates ${String(err)}`,
+    };
+  }
+}
+
+const updateStatusText = computed(() => {
+  const result = updateCheck.value;
+  if (!result) return '';
+  if (result.status === 'available' && result.latestVersion) {
+    return t('settings.updateAvailable', { version: result.latestVersion });
+  }
+  if (result.status === 'upToDate') {
+    return result.message || t('settings.upToDate');
+  }
+  return result.message || t('settings.updateError');
+});
 
 function onHotkeysUpdated(snapshot: HotkeysSnapshot) {
   hotkeys.value = snapshot;
@@ -576,6 +633,49 @@ onBeforeUnmount(() => {
               <div class="settings-item-copy">
                 <span>{{ t('settings.permissions') }}</span>
                 <p>{{ t('settings.windowsNote') }}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          v-if="matchesQuery(t('settings.about'), t('settings.version'), t('settings.checkUpdate'))"
+          class="settings-group"
+        >
+          <div class="settings-group-head">
+            <h2>{{ t('settings.about') }}</h2>
+          </div>
+          <div class="settings-list">
+            <div class="settings-item">
+              <div class="settings-item-copy">
+                <span>{{ t('settings.version') }}</span>
+                <p>{{ appVersion ? `v${appVersion}` : t('settings.notLoaded') }}</p>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-copy">
+                <span>{{ t('settings.checkUpdate') }}</span>
+                <p v-if="updateStatusText" :class="{ 'update-error': updateCheck?.status === 'error' }">
+                  {{ updateStatusText }}
+                </p>
+              </div>
+              <div class="settings-item-actions">
+                <button
+                  v-if="updateCheck?.status === 'available' && updateCheck.releaseUrl"
+                  class="action"
+                  type="button"
+                  @click="openRelease"
+                >
+                  {{ t('settings.openRelease') }}
+                </button>
+                <button
+                  class="action"
+                  type="button"
+                  :disabled="checkingUpdate"
+                  @click="checkForUpdates"
+                >
+                  {{ checkingUpdate ? t('settings.checkingUpdate') : t('settings.checkUpdate') }}
+                </button>
               </div>
             </div>
           </div>

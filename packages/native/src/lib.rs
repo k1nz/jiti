@@ -49,7 +49,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(specta.invoke_handler())
         .setup(move |app| {
-            // specta 事件（hotkey://pressed / capture://changed / engine://error）必须先挂上，
+            // specta 事件（hotkey://pressed / capture://changed / engine://error / translate://enriched）必须先挂上，
             // 否则 Event::emit 会 panic：EventRegistry not found。
             specta.mount_events(app);
 

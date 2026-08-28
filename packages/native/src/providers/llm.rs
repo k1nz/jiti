@@ -120,6 +120,9 @@ pub async fn translate(
         detected_from: source,
         target: req.to.clone(),
         duration_ms: 0,
+        enrichment: None,
+        enrichment_word: None,
+        enrichment_pending: false,
     })
 }
 

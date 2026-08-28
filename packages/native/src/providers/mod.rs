@@ -3,7 +3,9 @@
 //! M1 实现 DeepL 与 LLM（OpenAI 兼容）两个适配器；有道仅保留注册表入口。
 //! 所有引擎 HTTP 一律由 Rust `reqwest` 发出（D1），WebView 不对引擎域名 fetch。
 
+pub mod clean;
 pub mod deepl;
+pub mod enrich;
 pub mod error;
 pub mod grammar;
 pub mod lang;
@@ -162,6 +164,15 @@ pub struct TranslateResult {
     pub detected_from: Option<String>,
     pub target: String,
     pub duration_ms: u32,
+    /// 英语短词词卡；失败时省略，不影响译文。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enrichment: Option<enrich::EnglishEnrichment>,
+    /// 词卡对应的英语单词；加载态即可显示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enrichment_word: Option<String>,
+    /// 后台正在拉词卡；完成后经 `translate://enriched` 清除。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub enrichment_pending: bool,
 }
 
 /// 完整链路：设置里选默认引擎 → keys.json 取 Key → 对应适配器。
@@ -179,7 +190,39 @@ pub async fn run_translate(
     let key = services::secrets::get_api_key(app, id).map_err(|_| EngineError::MissingKey {
         provider: provider_label(id).into(),
     })?;
-    translate_with(id, provider_config, key, request).await
+    let mut translated = translate_with(id, provider_config, key, request).await?;
+    if let Some(word) = enrich::english_headword(
+        &translated.target,
+        &translated.input,
+        &translated.output,
+    ) {
+        translated.enrichment_word = Some(word.clone());
+        translated.enrichment_pending = true;
+        let llm = llm_for_enrich(app, &config).map(|(cfg, key)| (cfg.clone(), key));
+        enrich::spawn(
+            app,
+            translated.input.clone(),
+            translated.output.clone(),
+            word,
+            llm,
+        );
+    }
+    Ok(translated)
+}
+
+fn llm_for_enrich<'a>(
+    app: &AppHandle,
+    config: &'a ProvidersConfig,
+) -> Option<(&'a ProviderConfig, String)> {
+    if !config.llm.enabled {
+        return None;
+    }
+    let key = services::secrets::get_api_key(app, PROVIDER_LLM).ok()?;
+    if key.trim().is_empty() {
+        None
+    } else {
+        Some((&config.llm, key))
+    }
 }
 
 /// 适配器级入口：测试连接与 mock 用例直接走这里，不依赖 secrets/AppHandle。
@@ -203,6 +246,10 @@ pub async fn translate_with(
             detail: format!("未注册的 Provider: {id}"),
         }),
     }?;
+    let cleaned = clean::sanitize_translation_output(&translated.output);
+    if !cleaned.is_empty() {
+        translated.output = cleaned;
+    }
     translated.duration_ms = started.elapsed().as_millis() as u32;
     Ok(translated)
 }

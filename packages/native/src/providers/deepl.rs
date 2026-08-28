@@ -93,6 +93,9 @@ pub async fn translate(
             .or_else(|| source.map(|s| normalize_detected(&s))),
         target: normalize_target(&req.to),
         duration_ms: 0,
+        enrichment: None,
+        enrichment_word: None,
+        enrichment_pending: false,
     })
 }
 

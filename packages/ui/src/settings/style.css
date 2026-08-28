@@ -427,6 +427,10 @@ html.settings-window body {
   margin: 8px 2px 0;
 }
 
+.update-error {
+  color: var(--j-danger);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .switch-track,
   .switch-track::after {

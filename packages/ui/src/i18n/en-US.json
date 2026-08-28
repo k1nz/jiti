@@ -32,7 +32,13 @@
     "engineUnset": "No engine selected",
     "keyOn": "Key saved",
     "keyOff": "Key missing",
-    "status": "{label} · {key}"
+    "status": "{label} · {key}",
+    "play": "Pronounce",
+    "mnemonic": "Mnemonic",
+    "roots": "Roots",
+    "examples": "Examples",
+    "senses": "Definitions",
+    "cardLoading": "Loading word card"
   },
   "grammar": {
     "action": "Check",
@@ -118,7 +124,15 @@
     "permissionOn": "On",
     "windowsNote": "Windows reads selected text through UI Automation and does not need extra system permission.",
     "openSystem": "Open system settings",
-    "notLoaded": "Settings are not loaded yet"
+    "notLoaded": "Settings are not loaded yet",
+    "about": "About",
+    "version": "Current version",
+    "checkUpdate": "Check for updates",
+    "checkingUpdate": "Checking",
+    "upToDate": "You're up to date",
+    "updateAvailable": "Update available: {version}",
+    "updateError": "Could not check for updates",
+    "openRelease": "Open release page"
   },
   "hotkeys": {
     "title": "Shortcuts",

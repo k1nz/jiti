@@ -18,3 +18,4 @@ pub mod settings;
 pub mod settings_window;
 pub mod transport;
 pub mod tray;
+pub mod updates;

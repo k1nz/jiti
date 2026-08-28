@@ -32,7 +32,13 @@
     "engineUnset": "引擎未设置",
     "keyOn": "Key 已配置",
     "keyOff": "Key 未配置",
-    "status": "{label} · {key}"
+    "status": "{label} · {key}",
+    "play": "发音",
+    "mnemonic": "关联记忆",
+    "roots": "词根",
+    "examples": "例句",
+    "senses": "释义",
+    "cardLoading": "加载词卡"
   },
   "grammar": {
     "action": "检查",
@@ -118,7 +124,15 @@
     "permissionOn": "已开启",
     "windowsNote": "Windows 通过 UI Automation 读取选中文本，无需额外系统授权。",
     "openSystem": "打开系统设置",
-    "notLoaded": "设置尚未加载"
+    "notLoaded": "设置尚未加载",
+    "about": "关于",
+    "version": "当前版本",
+    "checkUpdate": "检查更新",
+    "checkingUpdate": "正在检查",
+    "upToDate": "已是最新版本",
+    "updateAvailable": "发现新版本 {version}",
+    "updateError": "检查更新失败",
+    "openRelease": "打开发布页"
   },
   "hotkeys": {
     "title": "快捷键",

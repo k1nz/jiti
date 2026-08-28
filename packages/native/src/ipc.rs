@@ -48,9 +48,13 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::commands::permissions::open_permission_settings,
             crate::commands::permissions::complete_onboarding,
             crate::commands::permissions::restart_app,
+            crate::commands::updates::app_version,
+            crate::commands::updates::check_for_updates,
+            crate::commands::updates::open_external_url,
         ])
         .events(collect_events![
             crate::providers::error::EngineErrorEvent,
+            crate::providers::enrich::TranslateEnrichedEvent,
             crate::services::selection::HotkeyPressedEvent,
             crate::services::selection::CaptureChangedEvent,
             crate::services::prefs::PreferencesChangedEvent,
@@ -78,12 +82,12 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 }
 
 /// Request/Response 与 Event 是互不相交的两个形状（§3.5）。
-/// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` 已纳入 specta 单源事件；
+/// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` / `translate://enriched` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 8 为 preferences.focusOnInvoke。
+/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 12 为词卡中英对照与加载态。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 12;
 
 #[cfg(test)]
 mod tests {

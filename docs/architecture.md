@@ -213,7 +213,7 @@ tauri_specta::ts::export(
 
 - App 常驻后台：macOS `activationPolicy = .accessory`（无 Dock 图标）；Windows 隐藏主窗 + 可选托盘。
 - 启动即注册全局热键、创建**隐藏**面板窗口、加载 Web bundle 并保持 WebView 存活。
-- 热键触发：`set_position → show()`，需要输入才 `set_focus()`。**不销毁、不重建** → 热启画面 <30ms。
+- 热键触发：`set_position → show()`，`prefs.focusOnInvoke`（默认 true）时再 `set_focus()`。**不销毁、不重建** → 热启画面 <30ms。
 - 关闭 = `hide()`；退出走托盘菜单。单例插件 `tauri-plugin-single-instance` 防竞态。
 - **主面板窗口永远预热**；**设置窗口独立入口、用后即拆**（内存规则见 §13：二级窗口拆得越狠，内存越干净）。
 
@@ -228,7 +228,7 @@ tauri_specta::ts::export(
 
 ### 4.3 Windows 差异
 - Win11 支持 Mica/Acrylic（`DWMWA_SYSTEMBACKDROP_TYPE` + `DwmExtendFrameIntoClientArea` + WebView2 透明背景），成熟度低于 macOS。v1 用稳妥视觉，Mica 作增值。
-- 焦点语义：无手动输入需要时尽量避免激活（`WS_EX_NOACTIVATE`），需要输入时正常激活。托盘图标是 Windows 主流形态。
+- 焦点语义：由 `prefs.focusOnInvoke` 控制；关掉时尽量避免激活（`WS_EX_NOACTIVATE` / 仅 `show()`）。托盘图标是 Windows 主流形态。
 
 ### 4.4 位置策略
 默认**跟随鼠标**（读光标坐标 → 换算显示器工作区 → 贴边出现在光标附近，不遮光标）。v0.5 不提供「记住位置」设置：这是产品策略，ship-readiness 第 15 项按有依据的 N/A 记录，不为过门禁扩展设置范围。屏幕中央与每屏记忆仍后置。
@@ -240,7 +240,7 @@ tauri_specta::ts::export(
 **macOS**
 1. **AX（首选）**：`objc2` 调 `AXUIElement`（前台 App → 聚焦元素 → `kAXSelectedTextAttribute`）。需**辅助功能权限**。浏览器选区经常滞后，AX 只作乐观预填。
 2. **剪贴板模拟（始终跑）**：记下源进程 PID，等修饰键松开后 `CGEventPostToPid` 对该进程发 Cmd+C → 变更 `changeCount` 才采用 → 立刻回写恢复原剪贴板。每次热键一个 epoch，迟到的上一次复制不得写回输入框。
-3. 都拿不到 → Vue 进入「手动输入」友好空态。捕获后不抢焦点。
+3. 都拿不到 → Vue 进入「手动输入」友好空态。是否抢焦点见 `prefs.focusOnInvoke`。
 
 **Windows**
 1. **UI Automation（首选）**：`windows` crate 取聚焦元素 `TextPattern2/ValuePattern`。
@@ -678,7 +678,7 @@ M5 拆成两段，避免把内部可测产物卡在 Apple Developer 证书上。
 
 ## 14. 风险清单（P0 / P1 排序）
 
-1. **P0 · macOS「不抢焦点」**：Tauri 窗口非 NSPanel，需 objc2 补（§4.2）；可降级「激活才显示」+ 开关，但这是体验核心。
+1. **P0 · macOS 焦点策略**：Tauri 窗口非 NSPanel，需 objc2 补（§4.2）；设置里 `focusOnInvoke` 可关成不激活。
 2. **P0 · 隐藏窗被 WebKit 节流**：预热弹窗若被判定不可见，首次显示卡顿（§4.6 A.1）。三件套（occlusion off + alpha 预热 + rAF 保活）必须进 M0。
 3. **P0 · 选中读取的权限与失败链**：AX 授权后需重启；Windows UIA 覆盖不全，剪贴板兜底必须通。
 4. **P1 · CORS**：所有引擎 HTTP 在 Rust（D1），WebView 内绝不对引擎域名 fetch。

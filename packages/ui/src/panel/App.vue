@@ -28,6 +28,7 @@ import type {
   SelectedText,
   GrammarProgressEvent_Deserialize,
   GrammarRequest_Deserialize,
+  TranslateEnrichedEvent,
 } from '../ipc/bindings';
 import { Channel } from '@tauri-apps/api/core';
 import {
@@ -58,6 +59,7 @@ import { useGrammarStore } from '../stores/grammar';
 import Onboarding from './Onboarding.vue';
 import GrammarView from './components/GrammarView.vue';
 import MistakesView from './components/MistakesView.vue';
+import TranslateEnrichment from './components/TranslateEnrichment.vue';
 
 const { t, locale } = useI18n();
 const store = usePanelStore();
@@ -101,6 +103,7 @@ let unlistenHotkey: UnlistenFn | undefined;
 let unlistenVisibility: UnlistenFn | undefined;
 let unlistenEngineError: UnlistenFn | undefined;
 let unlistenCapture: UnlistenFn | undefined;
+let unlistenEnrich: UnlistenFn | undefined;
 let permissionPoll: number | undefined;
 
 function onShellPointerDown(e: MouseEvent) {
@@ -157,6 +160,30 @@ async function runTranslate(text = store.input) {
     translateStatus.value = 'error';
     translateSpinner.value = false;
   }
+}
+
+function applyTranslateEnrichment(payload: TranslateEnrichedEvent) {
+  const current = translateResult.value;
+  if (!current) return;
+  if (current.input !== payload.input || current.output !== payload.output) return;
+  translateResult.value = {
+    ...current,
+    enrichmentPending: false,
+    enrichment: payload.enrichment
+      ? {
+          ...payload.enrichment,
+          word: payload.word || payload.enrichment.word,
+        }
+      : null,
+  };
+}
+
+function enrichmentWord(result: TranslateResult) {
+  return result.enrichmentWord?.trim() || result.enrichment?.word?.trim() || result.output;
+}
+
+function cardLoading(result: TranslateResult) {
+  return Boolean(result.enrichmentPending) && !result.enrichment;
 }
 
 async function runGrammar(text = store.input) {
@@ -464,6 +491,9 @@ onMounted(async () => {
     translateError.value = event.payload;
     if (store.activeMode === 'translate') translateStatus.value = 'error';
   });
+  unlistenEnrich = await events.translateEnriched.listen((event) => {
+    applyTranslateEnrichment(event.payload);
+  });
   await loadSettings();
   try {
     store.setPinned(await commands.panelPinned());
@@ -483,6 +513,7 @@ onBeforeUnmount(() => {
   unlistenVisibility?.();
   unlistenEngineError?.();
   unlistenCapture?.();
+  unlistenEnrich?.();
   stopPermissionPoll();
 });
 
@@ -622,6 +653,12 @@ watch(
         </div>
         <div v-else-if="translateResult" class="result-box" data-tauri-drag-region="false">
           <p class="output">{{ translateResult.output }}</p>
+          <TranslateEnrichment
+            v-if="translateResult.enrichmentPending || translateResult.enrichment"
+            :word="enrichmentWord(translateResult)"
+            :enrichment="translateResult.enrichment"
+            :loading="cardLoading(translateResult)"
+          />
           <div class="meta">
             <span>{{ translateResult.engine }}</span>
             <span v-if="translateResult.detectedFrom || translateResult.target">{{ languagePairLabel(translateResult.detectedFrom, translateResult.target, t) }}</span>

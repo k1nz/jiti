@@ -12,3 +12,4 @@ pub mod providers;
 pub mod selection;
 pub mod settings;
 pub mod translate;
+pub mod updates;
