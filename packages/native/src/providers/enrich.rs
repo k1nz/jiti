@@ -124,13 +124,11 @@ pub fn spawn(
     tauri::async_runtime::spawn(async move {
         let transport = crate::services::transport::shared();
         let llm_ref = llm.as_ref().map(|(cfg, key)| (cfg, key.as_str()));
-        let mut enrichment = tokio::time::timeout(
-            ENRICH_BUDGET,
-            enrich_english(&word, llm_ref, &transport),
-        )
-        .await
-        .ok()
-        .flatten();
+        let mut enrichment =
+            tokio::time::timeout(ENRICH_BUDGET, enrich_english(&word, llm_ref, &transport))
+                .await
+                .ok()
+                .flatten();
         if let Some(card) = enrichment.as_mut() {
             if card.word.is_none() {
                 card.word = Some(word.clone());

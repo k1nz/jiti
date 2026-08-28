@@ -254,7 +254,10 @@ mod tests {
 
     #[test]
     fn keeps_balanced_code_braces() {
-        assert_eq!(sanitize_translation_output("int main() { }"), "int main() { }");
+        assert_eq!(
+            sanitize_translation_output("int main() { }"),
+            "int main() { }"
+        );
         assert_eq!(sanitize_translation_output("你好，世界"), "你好，世界");
     }
 

@@ -191,11 +191,9 @@ pub async fn run_translate(
         provider: provider_label(id).into(),
     })?;
     let mut translated = translate_with(id, provider_config, key, request).await?;
-    if let Some(word) = enrich::english_headword(
-        &translated.target,
-        &translated.input,
-        &translated.output,
-    ) {
+    if let Some(word) =
+        enrich::english_headword(&translated.target, &translated.input, &translated.output)
+    {
         translated.enrichment_word = Some(word.clone());
         translated.enrichment_pending = true;
         let llm = llm_for_enrich(app, &config).map(|(cfg, key)| (cfg.clone(), key));
