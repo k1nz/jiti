@@ -288,11 +288,10 @@ fn parse_version(raw: &str) -> Option<ParsedVersion> {
 }
 
 pub fn is_allowed_url(url: &str) -> bool {
-    let trimmed = url.trim();
-    if trimmed.contains(char::is_whitespace) || trimmed.contains('\0') {
+    if url.contains(char::is_whitespace) || url.contains('\0') {
         return false;
     }
-    let lower = trimmed.to_ascii_lowercase();
+    let lower = url.to_ascii_lowercase();
     lower.starts_with("https://github.com/k1nz/jiti")
 }
 
