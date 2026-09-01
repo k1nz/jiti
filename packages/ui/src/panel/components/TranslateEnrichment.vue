@@ -3,11 +3,17 @@ import { computed, onBeforeUnmount, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconVolume } from '@tabler/icons-vue';
 import type { EnglishEnrichment } from '../../ipc/bindings';
+import ClipBookmark from './ClipBookmark.vue';
 
 const props = defineProps<{
   word: string;
   enrichment?: EnglishEnrichment | null;
   loading?: boolean;
+  saved?: boolean;
+}>();
+
+const emit = defineEmits<{
+  save: [];
 }>();
 
 const { t } = useI18n();
@@ -98,6 +104,12 @@ onBeforeUnmount(() => {
         >
           <IconVolume :size="14" :stroke-width="1.75" />
         </button>
+        <ClipBookmark
+          :saved="saved"
+          :size="14"
+          :label="t('clips.saveWord')"
+          @click="emit('save')"
+        />
         <audio v-if="audioUrl" ref="audioEl" :src="audioUrl" preload="none" />
       </div>
 

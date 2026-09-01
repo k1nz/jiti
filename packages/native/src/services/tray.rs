@@ -26,6 +26,9 @@ pub fn setup(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => crate::services::panel::show_panel(app, Mode::Panel),
+            "study" => {
+                crate::services::study_window::open_detached(app);
+            }
             "settings" => {
                 crate::services::settings_window::open_detached(app);
             }
@@ -47,17 +50,18 @@ pub fn refresh_labels(app: &AppHandle, locale: UiLocale) {
 }
 
 fn build_menu(app: &AppHandle, locale: UiLocale) -> Result<Menu<tauri::Wry>, tauri::Error> {
-    let (show, settings, quit) = labels(locale);
+    let (show, study, settings, quit) = labels(locale);
     let show = MenuItem::with_id(app, "show", show, true, None::<&str>)?;
+    let study = MenuItem::with_id(app, "study", study, true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", settings, true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some(quit))?;
-    Menu::with_items(app, &[&show, &settings, &quit])
+    Menu::with_items(app, &[&show, &study, &settings, &quit])
 }
 
-fn labels(locale: UiLocale) -> (&'static str, &'static str, &'static str) {
+fn labels(locale: UiLocale) -> (&'static str, &'static str, &'static str, &'static str) {
     match locale {
-        UiLocale::EnUs => ("Show Panel", "Settings", "Quit"),
-        UiLocale::ZhCn | UiLocale::System => ("显示面板", "设置", "退出"),
+        UiLocale::EnUs => ("Show Panel", "Review", "Settings", "Quit"),
+        UiLocale::ZhCn | UiLocale::System => ("显示面板", "复习课", "设置", "退出"),
     }
 }
 
@@ -67,11 +71,17 @@ mod tests {
 
     #[test]
     fn english_tray_labels() {
-        assert_eq!(labels(UiLocale::EnUs), ("Show Panel", "Settings", "Quit"));
+        assert_eq!(
+            labels(UiLocale::EnUs),
+            ("Show Panel", "Review", "Settings", "Quit")
+        );
     }
 
     #[test]
     fn chinese_tray_labels() {
-        assert_eq!(labels(UiLocale::ZhCn), ("显示面板", "设置", "退出"));
+        assert_eq!(
+            labels(UiLocale::ZhCn),
+            ("显示面板", "复习课", "设置", "退出")
+        );
     }
 }

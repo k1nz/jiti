@@ -1,8 +1,8 @@
 //! 全局热键（tauri-plugin-global-shortcut，Carbon/RegisterHotKey 底层）。
 //!
 //! 默认（§7.3，均可改）：
-//! - macOS：⌥⌘T 翻译 / ⌥⌘G 语法 / ⌥⌘Space 面板
-//! - Windows：Ctrl+Shift+T 翻译 / Ctrl+Alt+G 语法 / Ctrl+Alt+Space 面板
+//! - macOS：⌥⌘T 翻译 / ⌥⌘G 语法 / ⌥⌘Space 面板 / ⌥⌘S 收藏
+//! - Windows：Ctrl+Shift+T 翻译 / Ctrl+Alt+G 语法 / Ctrl+Alt+Space 面板 / Ctrl+Alt+S 收藏
 //!
 //! 配置落 `settings.json` 的 `hotkeys` 键；变更即 Unregister+Register，冲突返回错误。
 
@@ -21,7 +21,7 @@ use super::permissions;
 
 const STORE_KEY: &str = "hotkeys";
 
-static REGISTERED: LazyLock<Mutex<HashMap<u32, Mode>>> =
+static REGISTERED: LazyLock<Mutex<HashMap<u32, HotkeyId>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
@@ -30,18 +30,23 @@ pub enum HotkeyId {
     Translate,
     Grammar,
     Panel,
+    SaveClip,
 }
 
 impl HotkeyId {
-    pub fn all() -> [Self; 3] {
-        [Self::Translate, Self::Grammar, Self::Panel]
+    pub fn all() -> [Self; 4] {
+        [Self::Translate, Self::Grammar, Self::Panel, Self::SaveClip]
+    }
+
+    pub fn shows_panel(self) -> bool {
+        !matches!(self, Self::SaveClip)
     }
 
     pub fn mode(self) -> Mode {
         match self {
             Self::Translate => Mode::Translate,
             Self::Grammar => Mode::Grammar,
-            Self::Panel => Mode::Panel,
+            Self::Panel | Self::SaveClip => Mode::Panel,
         }
     }
 
@@ -50,6 +55,7 @@ impl HotkeyId {
             Self::Translate => "翻译",
             Self::Grammar => "语法",
             Self::Panel => "面板",
+            Self::SaveClip => "收藏",
         }
     }
 }
@@ -63,6 +69,8 @@ pub struct HotkeysConfig {
     pub grammar: String,
     #[serde(default = "default_panel_accel")]
     pub panel: String,
+    #[serde(default = "default_save_clip_accel")]
+    pub save_clip: String,
 }
 
 fn default_translate_accel() -> String {
@@ -77,12 +85,17 @@ fn default_panel_accel() -> String {
     defaults_for(permissions::platform()).panel
 }
 
+fn default_save_clip_accel() -> String {
+    defaults_for(permissions::platform()).save_clip
+}
+
 impl HotkeysConfig {
     fn get(&self, id: HotkeyId) -> &str {
         match id {
             HotkeyId::Translate => &self.translate,
             HotkeyId::Grammar => &self.grammar,
             HotkeyId::Panel => &self.panel,
+            HotkeyId::SaveClip => &self.save_clip,
         }
     }
 
@@ -91,6 +104,7 @@ impl HotkeysConfig {
             HotkeyId::Translate => self.translate = value,
             HotkeyId::Grammar => self.grammar = value,
             HotkeyId::Panel => self.panel = value,
+            HotkeyId::SaveClip => self.save_clip = value,
         }
     }
 }
@@ -119,12 +133,14 @@ pub fn defaults_for(platform: &str) -> HotkeysConfig {
             translate: "alt+super+KeyT".into(),
             grammar: "alt+super+KeyG".into(),
             panel: "alt+super+Space".into(),
+            save_clip: "alt+super+KeyS".into(),
         }
     } else {
         HotkeysConfig {
             translate: "shift+control+KeyT".into(),
             grammar: "control+alt+KeyG".into(),
             panel: "control+alt+Space".into(),
+            save_clip: "control+alt+KeyS".into(),
         }
     }
 }
@@ -254,12 +270,12 @@ fn save(app: &AppHandle, config: &HotkeysConfig) -> Result<(), String> {
     store.save().map_err(|e| e.to_string())
 }
 
-fn map_lock() -> std::sync::MutexGuard<'static, HashMap<u32, Mode>> {
+fn map_lock() -> std::sync::MutexGuard<'static, HashMap<u32, HotkeyId>> {
     REGISTERED.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn remember(shortcut: Shortcut, mode: Mode) {
-    map_lock().insert(shortcut.id(), mode);
+fn remember(shortcut: Shortcut, id: HotkeyId) {
+    map_lock().insert(shortcut.id(), id);
 }
 
 fn is_remembered(shortcut: &Shortcut) -> bool {
@@ -281,7 +297,7 @@ fn apply_registrations(app: &AppHandle, config: &HotkeysConfig) {
             continue;
         };
         match gs.register(shortcut) {
-            Ok(()) => remember(shortcut, id.mode()),
+            Ok(()) => remember(shortcut, id),
             Err(err) => {
                 let label = display_accelerator(config.get(id), permissions::platform());
                 eprintln!(
@@ -294,12 +310,18 @@ fn apply_registrations(app: &AppHandle, config: &HotkeysConfig) {
     }
 }
 
-/// 热键 → 模式。未登记的回落到统一面板。
+/// 已注册热键；未登记返回 None（回落到统一面板）。
+pub fn id_for(shortcut: &Shortcut) -> Option<HotkeyId> {
+    map_lock().get(&shortcut.id()).copied()
+}
+
+/// 热键 → 面板模式。收藏热键不是面板模式。
+#[allow(dead_code)]
 pub fn mode_for(shortcut: &Shortcut) -> Mode {
-    map_lock()
-        .get(&shortcut.id())
-        .copied()
-        .unwrap_or(Mode::Panel)
+    match id_for(shortcut) {
+        Some(id) if id.shows_panel() => id.mode(),
+        _ => Mode::Panel,
+    }
 }
 
 /// 录制新热键前卸掉已注册快捷键，否则 OS 会吞掉按键，WebView 收不到。
@@ -406,6 +428,7 @@ mod tests {
         assert_eq!(display_accelerator(&d.translate, "macos"), "⌥⌘T");
         assert_eq!(display_accelerator(&d.grammar, "macos"), "⌥⌘G");
         assert_eq!(display_accelerator(&d.panel, "macos"), "⌥⌘Space");
+        assert_eq!(display_accelerator(&d.save_clip, "macos"), "⌥⌘S");
     }
 
     #[test]
@@ -413,6 +436,7 @@ mod tests {
         let d = defaults_for("windows");
         assert_eq!(display_accelerator(&d.grammar, "windows"), "Ctrl+Alt+G");
         assert_eq!(display_accelerator(&d.panel, "windows"), "Ctrl+Alt+Space");
+        assert_eq!(display_accelerator(&d.save_clip, "windows"), "Ctrl+Alt+S");
     }
 
     #[test]
@@ -451,6 +475,7 @@ mod tests {
             translate: "not-a-key".into(),
             grammar: "ctrl+alt+KeyG".into(),
             panel: String::new(),
+            save_clip: "not-a-key".into(),
         });
         let d = defaults();
         assert_eq!(restored.translate, d.translate);
@@ -474,5 +499,12 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn save_clip_does_not_show_panel() {
+        assert!(!HotkeyId::SaveClip.shows_panel());
+        assert!(HotkeyId::Translate.shows_panel());
+        assert!(HotkeyId::Panel.shows_panel());
     }
 }

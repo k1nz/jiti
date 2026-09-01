@@ -3,6 +3,7 @@
 //! 设置窗口、开机自启、历史库（history）、错题本（mistakes）、出网（transport）。
 
 pub mod autostart;
+pub mod clips;
 pub mod crash;
 pub mod database;
 pub mod dev;
@@ -12,10 +13,12 @@ pub mod mistakes;
 pub mod panel;
 pub mod permissions;
 pub mod prefs;
+pub mod review_plan;
 pub mod secrets;
 pub mod selection;
 pub mod settings;
 pub mod settings_window;
+pub mod study_window;
 pub mod transport;
 pub mod tray;
 pub mod updates;

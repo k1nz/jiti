@@ -7,17 +7,20 @@ import type { GrammarError, NewMistake } from '../../ipc/bindings';
 import { unwrap } from '../../ipc/unwrap';
 import { useGrammarStore } from '../../stores/grammar';
 import { useMistakesStore } from '../../stores/mistakes';
+import ClipBookmark from './ClipBookmark.vue';
 import GrammarErrorCard, { type CollectState } from './GrammarErrorCard.vue';
 
 const props = defineProps<{
   input: string;
   hint: string;
   copyLabel: string;
+  saved?: boolean;
 }>();
 
 const emit = defineEmits<{
   check: [];
   copy: [];
+  saveClip: [text: string];
 }>();
 
 const { t } = useI18n();
@@ -93,6 +96,12 @@ const statusLabel = computed(() => {
       </button>
       <span v-if="statusLabel" class="grammar-retry" aria-live="polite">{{ statusLabel }}</span>
       <span class="spacer"></span>
+      <ClipBookmark
+        v-if="props.input.trim()"
+        :saved="saved"
+        :label="t('clips.saveSentence')"
+        @click="emit('saveClip', props.input)"
+      />
       <button
         v-if="grammar.correctedText"
         class="icon-btn"

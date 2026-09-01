@@ -27,6 +27,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         settings: fileURLToPath(new URL('./settings.html', import.meta.url)),
+        study: fileURLToPath(new URL('./study.html', import.meta.url)),
       },
     },
   },

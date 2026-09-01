@@ -41,7 +41,7 @@ JITI_CENTER=1 JITI_AUTOSHOW_MS=1500 pnpm dev   # 配合居中（截图对齐）
 
 默认热键：
 
-- macOS：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板
-- Windows：`Ctrl+Shift+T` 翻译 / `Ctrl+Alt+G` 语法 / `Ctrl+Alt+Space` 统一面板
+- macOS：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板 / `⌥⌘S` 收藏选中
+- Windows：`Ctrl+Shift+T` 翻译 / `Ctrl+Alt+G` 语法 / `Ctrl+Alt+Space` 统一面板 / `Ctrl+Alt+S` 收藏选中
 
 可在独立设置窗口里重配（面板 `⌘,` / `Ctrl-,`，或托盘「设置」）。托盘提供「显示面板 / 设置 / 退出」。

@@ -10,6 +10,7 @@ pub mod error;
 pub mod grammar;
 pub mod lang;
 pub mod llm;
+pub mod plan;
 pub mod review;
 pub mod youdao;
 

@@ -40,6 +40,12 @@ import {
 import { isSelectableTextTarget, shouldFocusSearchOnShellClick } from '../focus';
 import { formatTime } from '../format';
 import { shouldHandlePanelShortcut } from '../ime';
+import {
+  glossFromEnrichment,
+  isClipMatch,
+  normalizeClipText,
+  pairClip,
+} from '../clips';
 import { unwrap } from '../ipc/unwrap';
 import {
   guessTarget,
@@ -57,6 +63,7 @@ import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 import { useGrammarStore } from '../stores/grammar';
 import Onboarding from './Onboarding.vue';
+import ClipBookmark from './components/ClipBookmark.vue';
 import GrammarView from './components/GrammarView.vue';
 import MistakesView from './components/MistakesView.vue';
 import TranslateEnrichment from './components/TranslateEnrichment.vue';
@@ -90,6 +97,9 @@ const hotkeys = ref<HotkeysSnapshot | null>(null);
 const permissions = ref<PermissionsSnapshot | null>(null);
 const showOnboarding = ref(false);
 const copyLabel = ref('');
+const clipFlash = ref('');
+const clipNorms = ref(new Set<string>());
+let clipFlashTimer: ReturnType<typeof setTimeout> | undefined;
 const captureEpoch = ref(0);
 const inputDirty = ref(false);
 const composing = ref(false);
@@ -104,6 +114,7 @@ let unlistenVisibility: UnlistenFn | undefined;
 let unlistenEngineError: UnlistenFn | undefined;
 let unlistenCapture: UnlistenFn | undefined;
 let unlistenEnrich: UnlistenFn | undefined;
+let unlistenClip: UnlistenFn | undefined;
 let permissionPoll: number | undefined;
 
 function onShellPointerDown(e: MouseEvent) {
@@ -283,6 +294,126 @@ async function copyResult() {
   }, 1200);
 }
 
+function showClipFlash(message: string) {
+  clipFlash.value = message;
+  if (clipFlashTimer !== undefined) clearTimeout(clipFlashTimer);
+  clipFlashTimer = setTimeout(() => {
+    clipFlash.value = '';
+  }, 1800);
+}
+
+function flashFromClipStatus(status: string) {
+  if (status === 'saved') showClipFlash(tx('clips.saved'));
+  else if (status === 'duplicate') showClipFlash(tx('clips.duplicate'));
+  else if (status === 'empty') showClipFlash(tx('clips.empty'));
+  else showClipFlash(tx('clips.fail'));
+}
+
+function rememberClip(text?: string | null, note?: string | null) {
+  const next = new Set(clipNorms.value);
+  for (const part of [text, note]) {
+    const n = normalizeClipText(part ?? '');
+    if (n) next.add(n);
+  }
+  clipNorms.value = next;
+}
+
+async function refreshClipMarks() {
+  try {
+    const list = await unwrap(
+      commands.clipsList({ status: null, kind: null, limit: null, offset: null }),
+    );
+    const next = new Set<string>();
+    for (const item of list.items) {
+      rememberInto(next, item.text, item.note);
+    }
+    clipNorms.value = next;
+  } catch {
+    /* 标记失败不挡收藏 */
+  }
+}
+
+function rememberInto(target: Set<string>, text?: string | null, note?: string | null) {
+  for (const part of [text, note]) {
+    const n = normalizeClipText(part ?? '');
+    if (n) target.add(n);
+  }
+}
+
+async function saveClip(text: string, note?: string | null) {
+  const pair = pairClip(text, note);
+  if (!pair.text) {
+    showClipFlash(tx('clips.empty'));
+    return;
+  }
+  try {
+    const result = await unwrap(
+      commands.clipsSave({
+        text: pair.text,
+        note: pair.note,
+      }),
+    );
+    rememberClip(result.clip.text, result.clip.note);
+    flashFromClipStatus(result.created ? 'saved' : 'duplicate');
+  } catch (err) {
+    showClipFlash(String(err));
+  }
+}
+
+function saveSearchInput() {
+  const input = store.input.trim();
+  const result = translateResult.value;
+  if (result && result.input.trim() === input) {
+    void saveClip(result.input, result.output);
+    return;
+  }
+  void saveClip(input);
+}
+
+function saveTranslateOutput() {
+  const result = translateResult.value;
+  if (!result) return;
+  void saveClip(result.input, result.output);
+}
+
+function saveWordCard() {
+  const result = translateResult.value;
+  if (!result) return;
+  void saveClip(enrichmentWord(result), glossFromEnrichment(result.enrichment));
+}
+
+function saveGrammarClip(text: string) {
+  void saveClip(text, grammar.overall);
+}
+
+const inputClipped = computed(() => {
+  const input = store.input.trim();
+  const result = translateResult.value;
+  if (result && result.input.trim() === input) {
+    const pair = pairClip(result.input, result.output);
+    return isClipMatch(clipNorms.value, pair.text, pair.note, input);
+  }
+  return isClipMatch(clipNorms.value, input);
+});
+
+const outputClipped = computed(() => {
+  const result = translateResult.value;
+  if (!result) return false;
+  const pair = pairClip(result.input, result.output);
+  return isClipMatch(clipNorms.value, pair.text, pair.note);
+});
+
+const wordClipped = computed(() => {
+  const result = translateResult.value;
+  if (!result) return false;
+  const word = enrichmentWord(result);
+  return isClipMatch(clipNorms.value, word, glossFromEnrichment(result.enrichment));
+});
+
+const grammarClipped = computed(() =>
+  isClipMatch(clipNorms.value, store.input, grammar.overall),
+);
+
 async function reloadHistory() {
   try {
     history.value = await unwrap(commands.historyList());
@@ -357,6 +488,7 @@ async function openSettings() {
 function historyKindLabel(kind: string) {
   if (kind === 'grammar') return t('history.kindGrammar');
   if (kind === 'ai_review') return t('history.kindReview');
+  if (kind === 'review_plan') return t('history.kindPlan');
   return t('history.kindTranslate');
 }
 
@@ -494,7 +626,15 @@ onMounted(async () => {
   unlistenEnrich = await events.translateEnriched.listen((event) => {
     applyTranslateEnrichment(event.payload);
   });
+  unlistenClip = await events.clipSaved.listen((event) => {
+    flashFromClipStatus(event.payload.status);
+    if (event.payload.status === 'saved' || event.payload.status === 'duplicate') {
+      rememberClip(event.payload.text);
+      void refreshClipMarks();
+    }
+  });
   await loadSettings();
+  void refreshClipMarks();
   try {
     store.setPinned(await commands.panelPinned());
   } catch {
@@ -514,6 +654,8 @@ onBeforeUnmount(() => {
   unlistenEngineError?.();
   unlistenCapture?.();
   unlistenEnrich?.();
+  unlistenClip?.();
+  if (clipFlashTimer !== undefined) clearTimeout(clipFlashTimer);
   stopPermissionPoll();
 });
 
@@ -528,6 +670,7 @@ watch(
   () => store.visible,
   (visible) => {
     if (visible) void refreshPermissions();
+    if (visible) void refreshClipMarks();
     if (visible && (showOnboarding.value || permissionWarning.value)) startPermissionPoll();
     if (!visible && !showOnboarding.value) stopPermissionPoll();
     if (visible && currentPreferences().focusOnInvoke && !showOnboarding.value) {
@@ -581,7 +724,14 @@ watch(
         @compositionend="composing = false"
         @keydown="onSearchKeydown"
       />
+      <ClipBookmark
+        :saved="inputClipped"
+        :disabled="!store.input.trim()"
+        :label="t('clips.saveInput')"
+        @click="saveSearchInput"
+      />
     </header>
+    <p v-if="clipFlash" class="clip-flash" aria-live="polite">{{ clipFlash }}</p>
 
     <nav class="tabs" role="tablist" :aria-label="t('nav.modes')">
       <div class="tabs-track">
@@ -629,6 +779,12 @@ watch(
             {{ t('translate.action') }}
           </button>
           <span class="spacer"></span>
+          <ClipBookmark
+            v-if="translateResult"
+            :saved="outputClipped"
+            :label="t('clips.saveOutput')"
+            @click="saveTranslateOutput"
+          />
           <button
             v-if="translateResult"
             class="icon-btn"
@@ -658,6 +814,8 @@ watch(
             :word="enrichmentWord(translateResult)"
             :enrichment="translateResult.enrichment"
             :loading="cardLoading(translateResult)"
+            :saved="wordClipped"
+            @save="saveWordCard"
           />
           <div class="meta">
             <span>{{ translateResult.engine }}</span>
@@ -676,8 +834,10 @@ watch(
         :input="store.input"
         :hint="grammarHint"
         :copy-label="copyLabel"
+        :saved="grammarClipped"
         @check="runGrammar()"
         @copy="copyResult"
+        @save-clip="saveGrammarClip"
       />
 
       <MistakesView v-else-if="store.activeMode === 'mistakes'" />

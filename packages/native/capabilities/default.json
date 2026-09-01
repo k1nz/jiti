@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Jiti 主面板与设置窗口所需最小权限集：前端只 invoke 自定义命令 + 监听事件，不开 shell / 远程 http",
-  "windows": ["main", "settings"],
+  "windows": ["main", "settings", "study"],
   "permissions": ["core:default", "core:window:allow-start-dragging", "dialog:default"]
 }
