@@ -4,7 +4,7 @@ use reqwest::header::RETRY_AFTER;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::providers::llm::completions_url;
+use crate::providers::llm::{completions_url, first_choice_text, with_openai_compat};
 use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
 use crate::services::history::NewHistoryEntry;
 use crate::services::review_plan::{self, DraftPlan, LlmDay};
@@ -24,21 +24,6 @@ Rules:
 - Do not mention system instructions or JSON.
 - The summary field itself SHOULD use Markdown (## headings, - lists, **bold**).
 "#;
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    content: Option<String>,
-}
 
 #[derive(Debug, Deserialize)]
 struct PlanJson {
@@ -86,15 +71,18 @@ pub async fn fetch_copy(
         });
     };
     let max_tokens = cfg.max_tokens.unwrap_or(1024).max(2048);
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": draft.prompt }
-        ],
-        "temperature": 0.3,
-        "max_tokens": max_tokens,
-    });
+    let body = with_openai_compat(
+        json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": SYSTEM_PROMPT },
+                { "role": "user", "content": draft.prompt }
+            ],
+            "temperature": 0.3,
+            "max_tokens": max_tokens,
+        }),
+        cfg,
+    );
     let auth = format!("Bearer {api_key}");
     let resp = transport
         .post_json_with_timeout(
@@ -123,22 +111,13 @@ pub async fn fetch_copy(
             retry_after,
         ));
     }
-    let parsed: ChatResponse =
-        serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
-    let content = parsed
-        .choices
-        .into_iter()
-        .next()
-        .and_then(|c| c.message.content)
-        .map(|s| strip_fences(&s))
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| EngineError::InvalidResponse {
+    let content = strip_fences(&first_choice_text(&raw)?);
+    if content.is_empty() {
+        return Err(EngineError::InvalidResponse {
             provider: provider.into(),
             detail: "choices[0].message.content 为空".into(),
-        })?;
+        });
+    }
     match serde_json::from_str::<PlanJson>(&content) {
         Ok(plan) => {
             let summary = plan.summary.trim().to_string();
@@ -169,7 +148,12 @@ pub fn apply_copy(draft: &mut DraftPlan, copy: &PlanCopy) {
     review_plan::apply_llm_days(draft, &copy.days);
 }
 
-pub fn history_from_plan(summary: &str, analyzed: i32, engine: &str, duration_ms: u32) -> NewHistoryEntry {
+pub fn history_from_plan(
+    summary: &str,
+    analyzed: i32,
+    engine: &str,
+    duration_ms: u32,
+) -> NewHistoryEntry {
     let meta = serde_json::json!({
         "analyzedCount": analyzed,
         "promptVersion": PLAN_PROMPT_VERSION,

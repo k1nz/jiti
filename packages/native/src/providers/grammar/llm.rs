@@ -11,7 +11,7 @@ use super::{
     parse_ndjson_line, GrammarDraft, GrammarProgressEvent, GrammarResult, NdjsonError,
     NdjsonRecord, ParseFail,
 };
-use crate::providers::llm::completions_url;
+use crate::providers::llm::{completions_url, first_choice_text, with_openai_compat};
 use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
 #[cfg(test)]
 use crate::services::transport::GRAMMAR_TIMEOUT;
@@ -51,21 +51,6 @@ Rules:
 - If the text is already correct, errors is an empty array.
 - Do not wrap output in markdown fences.
 "#;
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    content: Option<String>,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,16 +164,19 @@ async fn check_streaming(
 ) -> Result<GrammarResult, EngineError> {
     ensure_alive(alive)?;
     let (url, auth, model, max_tokens) = request_parts(cfg, api_key)?;
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": text }
-        ],
-        "temperature": 0.0,
-        "max_tokens": max_tokens,
-        "stream": true,
-    });
+    let body = with_openai_compat(
+        json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": SYSTEM_PROMPT },
+                { "role": "user", "content": text }
+            ],
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+            "stream": true,
+        }),
+        cfg,
+    );
     let resp = post(transport, &url, &auth, body, deadline).await?;
     let status = resp.status().as_u16();
     if !(200..300).contains(&status) {
@@ -268,16 +256,19 @@ async fn check_strict(
 ) -> Result<GrammarResult, EngineError> {
     ensure_alive(alive)?;
     let (url, auth, model, max_tokens) = request_parts(cfg, api_key)?;
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": RETRY_SYSTEM_PROMPT },
-            { "role": "user", "content": text }
-        ],
-        "temperature": 0.0,
-        "max_tokens": max_tokens,
-        "stream": false,
-    });
+    let body = with_openai_compat(
+        json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": RETRY_SYSTEM_PROMPT },
+                { "role": "user", "content": text }
+            ],
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+            "stream": false,
+        }),
+        cfg,
+    );
     let resp = post(transport, &url, &auth, body, deadline).await?;
     ensure_alive(alive)?;
     let status = resp.status().as_u16();
@@ -290,22 +281,13 @@ async fn check_strict(
             None,
         ));
     }
-    let parsed: ChatResponse =
-        serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
-            provider: provider_label(PROVIDER_LLM).into(),
-            detail: e.to_string(),
-        })?;
-    let content = parsed
-        .choices
-        .into_iter()
-        .next()
-        .and_then(|c| c.message.content)
-        .map(|s| strip_fences(&s))
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| EngineError::InvalidResponse {
+    let content = strip_fences(&first_choice_text(&raw)?);
+    if content.is_empty() {
+        return Err(EngineError::InvalidResponse {
             provider: provider_label(PROVIDER_LLM).into(),
             detail: "choices[0].message.content 为空".into(),
-        })?;
+        });
+    }
     let strict: StrictGrammarJson =
         serde_json::from_str(&content).map_err(|e| EngineError::InvalidResponse {
             provider: provider_label(PROVIDER_LLM).into(),

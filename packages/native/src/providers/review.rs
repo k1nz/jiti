@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use specta::Type;
 
-use crate::providers::llm::completions_url;
+use crate::providers::llm::{completions_url, first_choice_text, with_openai_compat};
 use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
 use crate::services::history::NewHistoryEntry;
 use crate::services::mistakes::{aggregate_for_review, Mistake, MistakeFilter};
@@ -34,21 +34,6 @@ pub struct AiReviewResult {
     pub analyzed_count: u32,
     pub engine: String,
     pub duration_ms: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    content: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,15 +82,18 @@ pub async fn review_with_timeout(
             detail: "model 未配置".into(),
         });
     };
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": user }
-        ],
-        "temperature": 0.3,
-        "max_tokens": cfg.max_tokens.unwrap_or(1024),
-    });
+    let body = with_openai_compat(
+        json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": SYSTEM_PROMPT },
+                { "role": "user", "content": user }
+            ],
+            "temperature": 0.3,
+            "max_tokens": cfg.max_tokens.unwrap_or(1024),
+        }),
+        cfg,
+    );
     let auth = format!("Bearer {api_key}");
     let started = std::time::Instant::now();
     let resp = transport
@@ -135,22 +123,13 @@ pub async fn review_with_timeout(
             retry_after,
         ));
     }
-    let parsed: ChatResponse =
-        serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
-    let content = parsed
-        .choices
-        .into_iter()
-        .next()
-        .and_then(|c| c.message.content)
-        .map(|s| strip_fences(&s))
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| EngineError::InvalidResponse {
+    let content = strip_fences(&first_choice_text(&raw)?);
+    if content.is_empty() {
+        return Err(EngineError::InvalidResponse {
             provider: provider.into(),
             detail: "choices[0].message.content 为空".into(),
-        })?;
+        });
+    }
     let review: ReviewJson =
         serde_json::from_str(&content).map_err(|e| EngineError::InvalidResponse {
             provider: provider.into(),
