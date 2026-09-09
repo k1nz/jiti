@@ -38,7 +38,7 @@ import {
   shouldAutoSubmitOnCapture,
 } from '../capture';
 import { isSelectableTextTarget, shouldFocusSearchOnShellClick } from '../focus';
-import { formatTime } from '../format';
+import { formatTime, isGrammarSuccessHistory } from '../format';
 import { shouldHandlePanelShortcut } from '../ime';
 import { unwrap } from '../ipc/unwrap';
 import {
@@ -358,6 +358,25 @@ function historyKindLabel(kind: string) {
   if (kind === 'grammar') return t('history.kindGrammar');
   if (kind === 'ai_review') return t('history.kindReview');
   return t('history.kindTranslate');
+}
+
+function historySource(entry: HistoryEntry): SourceChoice {
+  return entry.fromLang === 'zh' || entry.fromLang === 'en' ? entry.fromLang : 'auto';
+}
+
+function historyTarget(entry: HistoryEntry): LangCode {
+  return entry.toLang === 'zh' || entry.toLang === 'en'
+    ? entry.toLang
+    : guessTarget(entry.input);
+}
+
+function openHistoryEntry(entry: HistoryEntry) {
+  if (entry.kind !== 'translate') return;
+  store.input = entry.input;
+  source.value = historySource(entry);
+  target.value = historyTarget(entry);
+  store.setActiveMode('translate');
+  void runTranslate(entry.input);
 }
 
 const statusText = computed(() => {
@@ -704,12 +723,21 @@ watch(
             v-for="(entry, index) in history"
             :key="entry.id"
             class="history-row"
+            :class="{ 'is-clickable': entry.kind === 'translate' }"
             data-tauri-drag-region="false"
             :data-history-index="index"
-            tabindex="-1"
+            :tabindex="entry.kind === 'translate' ? 0 : -1"
+            :role="entry.kind === 'translate' ? 'button' : undefined"
+            :aria-label="entry.kind === 'translate' ? `${entry.input} → ${entry.output}` : undefined"
+            @click="openHistoryEntry(entry)"
+            @keydown.enter.prevent="openHistoryEntry(entry)"
+            @keydown.space.prevent="openHistoryEntry(entry)"
           >
             <div class="history-input">{{ entry.input }}</div>
-            <div class="history-output">{{ entry.output }}</div>
+            <div v-if="isGrammarSuccessHistory(entry)" class="history-output history-success">
+              {{ t('history.grammarCorrect') }}
+            </div>
+            <div v-else class="history-output">{{ entry.output }}</div>
             <div class="meta">
               <span>{{ historyKindLabel(entry.kind) }}</span>
               <span>{{ entry.engine }}</span>

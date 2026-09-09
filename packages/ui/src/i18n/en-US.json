@@ -54,7 +54,8 @@
     "empty": "No history yet",
     "kindTranslate": "Translate",
     "kindGrammar": "Grammar",
-    "kindReview": "Review"
+    "kindReview": "Review",
+    "grammarCorrect": "Grammar is correct"
   },
   "footer": {
     "escTab": "Esc hide · Tab switch mode",

@@ -54,7 +54,8 @@
     "empty": "暂无历史",
     "kindTranslate": "翻译",
     "kindGrammar": "语法",
-    "kindReview": "复习"
+    "kindReview": "复习",
+    "grammarCorrect": "语法正确"
   },
   "footer": {
     "escTab": "Esc 隐藏 · Tab 切模式",

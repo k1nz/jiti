@@ -732,6 +732,10 @@ textarea,
   border-radius: var(--j-radius-control);
 }
 
+.history-row.is-clickable {
+  cursor: pointer;
+}
+
 .history-row:hover,
 .mistake-list > li:hover {
   background: var(--j-row-hover);
@@ -759,6 +763,10 @@ textarea,
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.history-success {
+  color: var(--j-dot);
 }
 
 .setting-row {
