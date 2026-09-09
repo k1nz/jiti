@@ -32,6 +32,28 @@ export const commands = {
 	/**  按当前筛选导出 Markdown。取消保存对话框时返回 `None`，不写盘。 */
 	mistakesExport: (filter: MistakeFilter_Deserialize) => typedError<string | null, string>(__TAURI_INVOKE("mistakes_export", { filter })),
 	mistakesAiReview: (filter: MistakeFilter_Deserialize) => typedError<AiReviewResult, EngineErrorPayload>(__TAURI_INVOKE("mistakes_ai_review", { filter })),
+	clipsSave: (item: NewClip_Deserialize) => typedError<ClipSaveResult, string>(__TAURI_INVOKE("clips_save", { item })),
+	clipsList: (filter: ClipFilter_Deserialize) => typedError<ClipList, string>(__TAURI_INVOKE("clips_list", { filter })),
+	clipsUpdate: (id: number, patch: ClipPatch_Deserialize) => typedError<Clip, string>(__TAURI_INVOKE("clips_update", { id, patch })),
+	clipsDelete: (id: number) => typedError<number, string>(__TAURI_INVOKE("clips_delete", { id })),
+	openStudy: () => typedError<null, string>(__TAURI_INVOKE("open_study")),
+	reviewPlanGenerate: () => typedError<ReviewPlan, EngineErrorPayload>(__TAURI_INVOKE("review_plan_generate")),
+	reviewPlanActive: () => typedError<{
+	id: number,
+	createdAt: string,
+	status: string,
+	horizonDays: number,
+	analyzedCount: number,
+	summary: string,
+	engine: string | null,
+	durationMs: number | null,
+	promptVersion: string | null,
+	currentDay: number,
+	days: ReviewPlanDay[],
+	items: ReviewPlanItem[],
+} | null, string>(__TAURI_INVOKE("review_plan_active")),
+	reviewPlanGrade: (request: ReviewGradeRequest) => typedError<ReviewGradeResult, string>(__TAURI_INVOKE("review_plan_grade", { request })),
+	reviewPlanCompleteDay: (planId: number, dayIndex: number) => typedError<ReviewPlan, string>(__TAURI_INVOKE("review_plan_complete_day", { planId, dayIndex })),
 	hotkeysSnapshot: () => __TAURI_INVOKE<HotkeysSnapshot>("hotkeys_snapshot"),
 	hotkeysSet: (id: HotkeyId, accelerator: string) => typedError<HotkeysSnapshot, string>(__TAURI_INVOKE("hotkeys_set", { id, accelerator })),
 	hotkeysReset: () => typedError<HotkeysSnapshot, string>(__TAURI_INVOKE("hotkeys_reset")),
@@ -52,6 +74,7 @@ export const commands = {
 /** Events */
 export const events = {
 	captureChanged: makeEvent<CaptureChangedEvent>("capture://changed"),
+	clipSaved: makeEvent<ClipSavedEvent>("clip://saved"),
 	engineError: makeEvent<EngineErrorEvent>("engine://error"),
 	hotkeyPressed: makeEvent<HotkeyPressedEvent>("hotkey://pressed"),
 	preferencesChanged: makeEvent<PreferencesChangedEvent>("preferences://changed"),
@@ -82,6 +105,64 @@ export type AutostartStatus = {
 export type CaptureChangedEvent = {
 	epoch: number,
 	selection: SelectedText,
+};
+
+export type Clip = {
+	id: number,
+	createdAt: string,
+	text: string,
+	note: string | null,
+	kind: string,
+	sourceApp: string | null,
+	status: string,
+	meta: string | null,
+	serverId: string | null,
+	syncedAt: string | null,
+};
+
+export type ClipFilter = ClipFilter_Serialize | ClipFilter_Deserialize;
+
+export type ClipFilter_Deserialize = {
+	status?: string | null,
+	kind?: string | null,
+	limit?: number | null,
+	offset?: number | null,
+};
+
+export type ClipFilter_Serialize = {
+	status?: string | null,
+	kind?: string | null,
+	limit?: number | null,
+	offset?: number | null,
+};
+
+export type ClipList = {
+	items: Clip[],
+	total: number,
+};
+
+export type ClipPatch = ClipPatch_Serialize | ClipPatch_Deserialize;
+
+export type ClipPatch_Deserialize = {
+	status?: string | null,
+	note?: string | null,
+};
+
+export type ClipPatch_Serialize = {
+	status?: string | null,
+	note?: string | null,
+};
+
+export type ClipSaveResult = {
+	clip: Clip,
+	created: boolean,
+};
+
+/**  收藏热键结果：面板在可见时用它提示；成功静默时前端也可以忽略。 */
+export type ClipSavedEvent = {
+	status: string,
+	text: string | null,
+	created: boolean,
 };
 
 /**  specta 单源事件契约；Tauri 侧实际事件名保持 `engine://error`（§3.5）。 */
@@ -267,7 +348,7 @@ export type HotkeyBinding = {
 	registered: boolean,
 };
 
-export type HotkeyId = "translate" | "grammar" | "panel";
+export type HotkeyId = "translate" | "grammar" | "panel" | "saveClip";
 
 /**  热键载荷：模式 + 显示前读到的选中文本（§3.4）。 */
 export type HotkeyPressedEvent = {
@@ -342,6 +423,22 @@ export type MistakePreferences = {
 };
 
 export type MistakeTimeRange = "sevenDays" | "thirtyDays" | "all";
+
+export type NewClip = NewClip_Serialize | NewClip_Deserialize;
+
+export type NewClip_Deserialize = {
+	text: string,
+	note?: string | null,
+	kind?: string | null,
+	sourceApp?: string | null,
+};
+
+export type NewClip_Serialize = {
+	text: string,
+	note?: string | null,
+	kind?: string | null,
+	sourceApp?: string | null,
+};
 
 export type NewMistake = NewMistake_Serialize | NewMistake_Deserialize;
 
@@ -476,6 +573,57 @@ export type ProvidersSnapshot = {
 	defaultTranslate: string,
 	writeHistory: boolean,
 	providers: ProviderView[],
+};
+
+export type ReviewGradeRequest = {
+	itemId: number,
+	answer?: string | null,
+	outcome?: string,
+	markLearned?: boolean,
+};
+
+export type ReviewGradeResult = {
+	item: ReviewPlanItem,
+	matched: boolean,
+	plan: ReviewPlan,
+};
+
+export type ReviewPlan = {
+	id: number,
+	createdAt: string,
+	status: string,
+	horizonDays: number,
+	analyzedCount: number,
+	summary: string,
+	engine: string | null,
+	durationMs: number | null,
+	promptVersion: string | null,
+	currentDay: number,
+	days: ReviewPlanDay[],
+	items: ReviewPlanItem[],
+};
+
+export type ReviewPlanDay = {
+	dayIndex: number,
+	title: string,
+	errorTypes: string[],
+	goals: string[],
+	drill: string | null,
+	status: string,
+};
+
+export type ReviewPlanItem = {
+	id: number,
+	dayIndex: number,
+	sortOrder: number,
+	sourceKind: string,
+	sourceId: number,
+	promptText: string,
+	expected: string,
+	hint: string | null,
+	fragment: string | null,
+	result: string | null,
+	reviewedAt: string | null,
 };
 
 export type SelectedText = {

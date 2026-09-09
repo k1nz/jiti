@@ -14,7 +14,7 @@
 ## 1. 产品定位与需求
 
 ### 1.1 一句话定位
-一个由全局快捷键唤醒的系统级浮层工具：自动读取你当前**选中的文字**，按需执行**中英翻译**或**英语语法检查**，错题自动归档成**错题本**，可 AI 总结复习。
+一个由全局快捷键唤醒的系统级浮层工具：自动读取你当前**选中的文字**，按需执行**中英翻译**或**英语语法检查**，错题自动归档、短语可一键收藏，复习课在独立窗里练习。
 
 ### 1.2 确认后的需求清单（对应 v1）
 
@@ -23,7 +23,8 @@
 | 1 | 快速翻译 | 中↔英（双向、自动判向），选中即弹，可手动输入 |
 | 2 | 语法检查 & 改错 | 针对英语句子：找错、给修改、逐条讲解；错误卡片呈现 |
 | 3 | 错题本 | 自动收录每次语法错误；按类型/时间过滤；导出 Markdown |
-| 4 | AI 复习 | 一键总结高频错误、生成复习要点 |
+| 4 | AI 复习 | 面板一键总结高频错误；**复习课独立窗**生成可练习方案（填空/默写） |
+| 4a | 收藏 | 热键静默收藏选中短语/句子，供复习课巩固 |
 | 5 | 历史记录 | 最近查询历史，可翻看 |
 | 6 | 设置 | 快捷键重配、开机自启、多语言设定、引擎管理与测试 |
 | 7 | 交互 | 选中即弹 + 手动输入；方向键 / ⌘←→ 切模式；不同快捷键直达对应模式 |
@@ -145,8 +146,11 @@ M2 边界：不做 LanguageTool、后台取消。LanguageTool 后续只加适配
 错题本 Tab ─▶ mistakes_list(filter) 类型/状态/时间筛选
          ─▶ mistakes_export：按类型分组 Markdown，系统保存对话框
          ─▶ mistakes_ai_review：聚合频次+代表例句 → LLM → history(kind=ai_review)
+         ─▶ open_study：按需打开复习课窗（不进主面板包）
+收藏热键 ─▶ clips_save（规范化去重）；成功不 show 面板
+复习课窗 ─▶ review_plan_generate：open 错题+收藏本地分桶 → LLM 文案 → 填空/默写
 ```
-偏好在 `settings.json` 的独立 `mistakes` 键（默认 `autoCollect=true`、`defaultStatus=open`），不混进 Provider 配置。
+偏好在 `settings.json` 的独立 `mistakes` 键（默认 `autoCollect=true`、`defaultStatus=open`），不混进 Provider 配置。复习课与设置一样：独立 HTML entry，用时建窗、关闭销毁，避免拖慢主面板启动。不拆第二个安装包：同一份 `jiti.db` 就是词库链接。
 
 
 ### 3.5 IPC 契约：一份 schema，两端编译期同步
@@ -354,7 +358,7 @@ interface GrammarError {
 - 语法：系统提示固定英语检查、中文讲解、封闭枚举和 NDJSON 顺序；翻译仍输出纯文本。
 - 默认模型选最便宜档（gpt-4o-mini / deepseek-chat / haiku），`maxTokens` 上限沿用 Provider 配置，缺省 1024。
 - 相同输入的**内存 LRU 缓存**（键含输入、模型、Base URL、提示词版本）；请求级超时（语法 20s 总预算含一次严格重试 / 翻译 8s）。连接或首字节超过 10s 即用户可见错误。连接池共享，超时不绑在 Client 上。
-- AI 复习复用同一 LLM Provider，单独 prompt，只读历史错误聚合高频类型（M3）。
+- AI 复习复用同一 LLM Provider，单独 prompt，只读历史错误聚合高频类型（M3）。复习课方案另一次 prompt，分桶在本地完成。
 
 ### 5.6 商业化（SaaS）预留边界
 1. **Transport 抽象**：Rust 侧「出网」封装 `Transport` trait，v1 是 `LocalTransport`（reqwest + keys.json）；未来加 `RemoteTransport`，UI 零改动。
@@ -370,7 +374,7 @@ interface GrammarError {
 | 类型 | 现在（v1 / 开发期 / M5 RC） | 目标（M5.1 签名公证后，可选升级） | 明确不放 |
 |---|---|---|---|
 | 非密钥配置 | `settings.json`（热键、主题、默认引擎、窗口位置） | 不变 | API Key、历史、错题 |
-| 用户内容 | SQLite（`history` / `mistakes`） | 不变 | API Key |
+| 用户内容 | SQLite（`history` / `mistakes` / `clips` / `review_plans`） | 不变 | API Key |
 | 密钥 | `keys.json` 明文（条目少、可手改、不弹密码） | 加密存储；解锁密钥进 OS Keychain | WebView、历史表、settings.json |
 
 条目少（两三个 Provider Key）不值得单独做业务表。SQLite 的价值在查询与体量；把 Key 写成历史库里的明文列，并不比 `keys.json` 更安全。
@@ -403,12 +407,45 @@ CREATE INDEX idx_mistakes_type    ON mistakes(error_type);
 CREATE TABLE history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  kind TEXT NOT NULL,                   -- translate | grammar | ai_review
+  kind TEXT NOT NULL,                   -- translate | grammar | ai_review | review_plan | review_plan
   input TEXT, output TEXT,
   engine TEXT, from_lang TEXT, to_lang TEXT,
   duration_ms INTEGER, source_app TEXT, meta TEXT
 );
 CREATE INDEX idx_history_created ON history(created_at);
+
+CREATE TABLE clips (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  text TEXT NOT NULL,                   -- 英语原文（默写对象）
+  text_norm TEXT NOT NULL,              -- 去重键（折叠空白 + 小写）
+  note TEXT,                            -- 中文释义
+  kind TEXT,                            -- word | phrase | sentence
+  source_app TEXT,
+  status TEXT DEFAULT 'open',
+  meta TEXT, server_id TEXT, synced_at TEXT
+);
+
+CREATE TABLE review_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  status TEXT NOT NULL DEFAULT 'active', -- active | archived
+  horizon_days INTEGER NOT NULL,
+  analyzed_count INTEGER NOT NULL,
+  summary TEXT NOT NULL,
+  days_json TEXT NOT NULL,
+  engine TEXT, duration_ms INTEGER, prompt_version TEXT, filter_json TEXT, meta TEXT
+);
+CREATE TABLE review_plan_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL,
+  day_index INTEGER NOT NULL,
+  sort_order INTEGER NOT NULL,
+  source_kind TEXT NOT NULL,            -- mistake | clip
+  source_id INTEGER NOT NULL,
+  prompt_text TEXT NOT NULL, expected TEXT NOT NULL,
+  hint TEXT, fragment TEXT, result TEXT, reviewed_at TEXT
+);
 ```
 
 ### 6.2 密钥存储
@@ -560,6 +597,7 @@ API Key 放应用数据目录的 `keys.json`（tauri-plugin-store），与 `sett
 - `vue-i18n`，`zh-CN` 默认 / `en-US`；设置项「跟随系统 / 简体中文 / English」。
 - 「界面语言」与「翻译语种」分开；语法讲解语气固定为面向中文英语学习者（中文讲解），不随界面语言变（产品定位）。
 - 设置是独立窗口（`packages/ui/src/settings/`，⌘, / Ctrl-, / 托盘），关闭即销毁。IME 专项 QA 见 [`docs/m4-ime-qa.md`](m4-ime-qa.md)。
+- 复习课是同类按需窗（`packages/ui/src/study/` + `study.html`），不进主面板包；关闭即销毁。托盘「复习课」与错题本入口打开。
 
 ---
 
@@ -704,7 +742,7 @@ M5 拆成两段，避免把内部可测产物卡在 Apple Developer 证书上。
 | **M4 设置完善** | 自启、i18n、主题、独立设置窗口、IME 专项 QA（快捷键重配已落地） | 可交付内测（已接通） |
 | **M5 RC** | 流式总预算与取消、原生约定审计（§8.4）、**ship-readiness 75 项（§12 / [`m5-readiness.md`](m5-readiness.md)）**、CI、ad-hoc macOS + 未签名 Windows 内部包 | 内部可安装 RC，不对外宣称可信 |
 | **M5.1 正式发布** | Developer ID 签名、公证、staple、Gatekeeper / SmartScreen 复测、生产崩溃上报；Windows 签名独立处理 | 可对外分发的 `0.5.0` |
-| **后置** | **密钥升级（可选，§6.2）**：`keys.json` → 加密库或 Keychain，一次性迁移、IPC 不变、Key 永不进历史表；Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估 | 无 |
+| **后置** | **密钥升级（可选，§6.2）**：`keys.json` → 加密库或 Keychain，一次性迁移、IPC 不变、Key 永不进历史表；Remote transport（SaaS 预留）、云同步、内联纠错评估、液态玻璃深度定制评估。**不拆第二个学习 App**：复习课已是同仓按需窗。 | 无 |
 
 ---
 

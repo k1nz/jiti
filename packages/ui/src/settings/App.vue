@@ -60,7 +60,7 @@ const NAV: ReadonlyArray<{
     id: 'shortcuts',
     icon: IconKeyboard,
     labelKey: 'hotkeys.title',
-    keys: ['hotkeys.translate', 'hotkeys.grammar', 'hotkeys.panel', 'hotkeys.reset'],
+    keys: ['hotkeys.translate', 'hotkeys.grammar', 'hotkeys.panel', 'hotkeys.saveClip', 'hotkeys.reset'],
   },
   {
     id: 'engines',

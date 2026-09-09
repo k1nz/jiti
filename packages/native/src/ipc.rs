@@ -36,6 +36,15 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::commands::mistakes::mistakes_set_preferences,
             crate::commands::mistakes::mistakes_export,
             crate::commands::mistakes::mistakes_ai_review,
+            crate::commands::clips::clips_save,
+            crate::commands::clips::clips_list,
+            crate::commands::clips::clips_update,
+            crate::commands::clips::clips_delete,
+            crate::commands::study::open_study,
+            crate::commands::study::review_plan_generate,
+            crate::commands::study::review_plan_active,
+            crate::commands::study::review_plan_grade,
+            crate::commands::study::review_plan_complete_day,
             crate::commands::hotkeys::hotkeys_snapshot,
             crate::commands::hotkeys::hotkeys_set,
             crate::commands::hotkeys::hotkeys_reset,
@@ -58,6 +67,7 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::services::selection::HotkeyPressedEvent,
             crate::services::selection::CaptureChangedEvent,
             crate::services::prefs::PreferencesChangedEvent,
+            crate::services::clips::ClipSavedEvent,
         ])
 }
 
@@ -85,9 +95,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 /// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` / `translate://enriched` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 12 为词卡中英对照与加载态。
+/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 13 为收藏与复习课独立窗。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 #[cfg(test)]
 mod tests {

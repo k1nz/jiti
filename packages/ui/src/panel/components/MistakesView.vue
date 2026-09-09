@@ -7,6 +7,7 @@ import {
   IconDownload,
   IconFilter,
   IconNotebook,
+  IconSchool,
   IconSparkles,
 } from "@tabler/icons-vue";
 import { commands } from "../../ipc/bindings";
@@ -160,6 +161,14 @@ async function exportMarkdown() {
   }
 }
 
+async function openStudy() {
+  try {
+    await unwrap(commands.openStudy());
+  } catch (err) {
+    mistakes.failList(mistakes.listId, String(err));
+  }
+}
+
 async function runReview() {
   const id = mistakes.beginReview();
   try {
@@ -305,6 +314,14 @@ onBeforeUnmount(() => {
       >
         <IconDownload :size="14" :stroke-width="1.75" />
         {{ t("mistakes.export") }}
+      </button>
+      <button
+        class="action subtle"
+        type="button"
+        @click="openStudy"
+      >
+        <IconSchool :size="14" :stroke-width="1.75" />
+        {{ t("study.open") }}
       </button>
       <button
         class="action"

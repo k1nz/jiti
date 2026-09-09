@@ -10,8 +10,8 @@ use specta::Type;
 use tauri::AppHandle;
 use tauri_specta::Event;
 
-use crate::providers::llm::completions_url;
-use crate::providers::{lang, provider_label, EngineError, ProviderConfig, PROVIDER_LLM};
+use crate::providers::llm::{completions_url, first_choice_text, with_openai_compat};
+use crate::providers::{lang, EngineError, ProviderConfig};
 use crate::services::transport::Transport;
 
 const DICT_BASE: &str = "https://api.dictionaryapi.dev/api/v2/entries/en";
@@ -397,7 +397,6 @@ async fn llm_enrich(
     english: &str,
     transport: &dyn Transport,
 ) -> Result<Option<EnglishEnrichment>, EngineError> {
-    let provider = provider_label(PROVIDER_LLM);
     let Some(base) = cfg.base_url.clone() else {
         return Ok(None);
     };
@@ -405,15 +404,18 @@ async fn llm_enrich(
         return Ok(None);
     };
     let user = format!("English headword: {head}\nEnglish text: {english}");
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": LLM_SYSTEM },
-            { "role": "user", "content": user }
-        ],
-        "temperature": 0.4,
-        "max_tokens": cfg.max_tokens.unwrap_or(1024),
-    });
+    let body = with_openai_compat(
+        json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": LLM_SYSTEM },
+                { "role": "user", "content": user }
+            ],
+            "temperature": 0.4,
+            "max_tokens": cfg.max_tokens.unwrap_or(1024),
+        }),
+        cfg,
+    );
     let auth = format!("Bearer {api_key}");
     let resp = match tokio::time::timeout(
         ENRICH_BUDGET,
@@ -434,20 +436,15 @@ async fn llm_enrich(
     if !(200..300).contains(&status) {
         return Ok(None);
     }
-    let parsed: ChatResponse =
-        serde_json::from_str(&raw).map_err(|e| EngineError::InvalidResponse {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
-    let content = parsed
-        .choices
-        .into_iter()
-        .next()
-        .and_then(|c| c.message.content)
-        .map(|s| strip_fences(&s))
-        .filter(|s| !s.is_empty());
-    let Some(content) = content else {
-        return Ok(None);
+    let content = match first_choice_text(&raw) {
+        Ok(text) => {
+            let stripped = strip_fences(&text);
+            if stripped.is_empty() {
+                return Ok(None);
+            }
+            stripped
+        }
+        Err(_) => return Ok(None),
     };
     let parsed: LlmCard = serde_json::from_str(&content).unwrap_or(LlmCard::default());
     Ok(llm_card_to_enrichment(parsed).into_option())
@@ -721,21 +718,6 @@ struct LlmSense {
     definition: Option<String>,
     #[serde(default)]
     translation: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    content: Option<String>,
 }
 
 #[cfg(test)]
