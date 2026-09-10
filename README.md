@@ -28,7 +28,15 @@ pnpm ui:typecheck       # vue-tsc
 pnpm test               # vitest + cargo test（cargo test 会重新导出 bindings.ts）
 pnpm check:versions     # 对齐 package / Cargo / tauri 版本与 identifier
 pnpm build              # 生产构建（tauri build；macOS ad-hoc 签名）
+pnpm build:mac          # macOS 生产构建，用稳定证书签名（见下）
 ```
+
+macOS 上如果要装到 `/Applications` 长期使用，用 `pnpm build:mac`。它把
+`APPLE_SIGNING_IDENTITY` 设为自签名证书 `Jiti Local Dev`，签出来的包
+designated requirement 锚定在证书上，重装或升级都不会让「辅助功能」授权失效。
+证书材料与重建方法见 [`docs/macos-signing.md`](docs/macos-signing.md)。
+`tauri.conf.json` 里的 `signingIdentity` 必须保持 `"-"`（`pnpm check:versions` 会校验），
+身份只经由环境变量注入——本地用 `pnpm build:mac`，CI 由 workflow 提供。
 
 CI：`.github/workflows/ci.yml`。内部 RC 包：`.github/workflows/rc-build.yml`（手动或 `v0.5.0-rc.*` tag）。正式签名发布：`.github/workflows/release.yml`（M5.1，需 `release` Environment 的 Apple 证书；Windows 签名与 `JITI_SENTRY_DSN` 可选且不与 Apple 凭据耦合）。
 

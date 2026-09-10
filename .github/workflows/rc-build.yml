@@ -1,6 +1,14 @@
 name: RC Build
 
-# Internal unsigned / ad-hoc packages. Does not create a public GitHub Release.
+# Internal builds for the maintainer and a small trusted circle, not a public
+# release. Signed with a self-signed certificate so that Accessibility grants
+# survive upgrades; not notarized, so recipients approve the app once in
+# System Settings > Privacy & Security. Does not create a public GitHub Release.
+#
+# Required repository secrets (macOS legs):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, KEYCHAIN_PASSWORD
+# The certificate must be the same one used for local builds, or a machine that
+# installs both would have its Accessibility grant invalidated by the other.
 on:
   workflow_dispatch:
   push:
@@ -42,13 +50,52 @@ jobs:
           targets: ${{ matrix.rust_target }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:versions
+      - name: Import signing certificate
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE:-}" ]]; then
+            echo "::error::APPLE_CERTIFICATE is not set. The build would fall back to ad-hoc signing and silently break every recipient's Accessibility grant on the next upgrade. Add the three signing secrets before tagging."
+            exit 1
+          fi
+          CERT_PATH="$RUNNER_TEMP/jiti-local-dev.p12"
+          KEYCHAIN="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$CERT_PATH"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Must match the certificate above. Overrides the bundle.macOS.signingIdentity
+          # in tauri.conf.json, which names the same identity on a developer machine.
+          APPLE_SIGNING_IDENTITY: "Jiti Local Dev"
         with:
           projectPath: packages/native
           args: ${{ matrix.args }}
           includeUpdaterJson: false
+      - name: Reject an ad-hoc package
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find packages/native/target -name 'Jiti.app' -type d | head -n 1)
+          test -n "$APP"
+          codesign --verify --deep --strict "$APP"
+          requirement=$(codesign -d -r- "$APP" 2>&1 | tail -n 1)
+          echo "$requirement"
+          if [[ "$requirement" == *cdhash* ]]; then
+            echo "::error::$APP is ad-hoc signed, so every recipient's Accessibility grant would break on the next upgrade."
+            exit 1
+          fi
       - name: SHA-256
         shell: bash
         run: |

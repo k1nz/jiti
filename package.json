@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "pnpm --dir packages/native tauri dev",
     "build": "pnpm --dir packages/native tauri build",
+    "build:mac": "APPLE_SIGNING_IDENTITY=\"Jiti Local Dev\" pnpm --dir packages/native tauri build",
     "ui:dev": "pnpm --dir packages/ui dev",
     "ui:build": "pnpm --dir packages/ui build",
     "ui:test": "pnpm --dir packages/ui test",
