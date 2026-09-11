@@ -1,0 +1,6 @@
+# Nuxt
+.nuxt
+.output
+node_modules
+dist
+.DS_Store

@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "title": "Jiti — Translate without stealing focus",
+    "description": "Jiti is a global-shortcut overlay for translation and grammar. Select text, get a result, stay in the window you were using."
+  },
+  "github": "GitHub",
+  "lang": "Language",
+  "cta": {
+    "mac": "Download macOS",
+    "win": "Download Windows",
+    "all": "All releases"
+  },
+  "hero": {
+    "title": "Keep your focus.",
+    "lead": "A system overlay for translation, grammar, and review. One shortcut."
+  },
+  "mock": {
+    "label": "System overlay · select to invoke",
+    "query": "keep the lights on",
+    "pair": "Auto → Chinese",
+    "output": "让灯一直亮着",
+    "status": "DeepL · key configured",
+    "hide": "Hide"
+  },
+  "tabs": {
+    "translate": "Translate",
+    "grammar": "Grammar",
+    "mistakes": "Notebook",
+    "history": "History"
+  },
+  "feat": {
+    "t1": "Translate",
+    "region": "Features",
+    "d1": "Select text, hit the shortcut, get a translation. Auto direction, swappable engines.",
+    "t2": "Grammar",
+    "d2": "English rewrites with per-error notes. Issues land in your notebook.",
+    "t3": "Notebook",
+    "d3": "Grammar misses are filed automatically. Review them in a separate study window."
+  },
+  "how": {
+    "title": "Shortcut down, overlay up",
+    "lead": "The panel is pre-created and stays warm. Show target is under 30 ms.",
+    "s1t": "Select text, press a shortcut",
+    "s1d": "Translate, grammar, and the unified panel each have a hotkey. Remap in Settings.",
+    "s2t": "Read the current selection",
+    "s2d": "macOS uses Accessibility plus a clipboard round-trip, without bumping your frontmost app.",
+    "s3t": "Results appear in place",
+    "s3d": "Translation, rewrite, or a mistake card. Esc hides immediately."
+  },
+  "keys": {
+    "title": "Default shortcuts",
+    "panel": "Panel",
+    "clip": "Save selection"
+  },
+  "faq": {
+    "title": "FAQ",
+    "q1": "Do I need an account?",
+    "a1": "No. Jiti runs locally. Engines use your own key (DeepL, Youdao, or an OpenAI-compatible API).",
+    "q2": "Which platforms?",
+    "a2": "macOS (Apple Silicon and Intel) and Windows 10/11. Linux is not in this release.",
+    "q3": "Why does macOS ask for Accessibility?",
+    "a3": "Reading selected text in other apps requires it. First launch walks you through; you can still type manually.",
+    "q4": "Will it steal focus?",
+    "a4": "On macOS the panel follows a native no-activate path. You can also choose to focus the input on invoke."
+  },
+  "foot": {
+    "title": "Install, then select to translate",
+    "lead": "Free, local-first. Source on GitHub.",
+    "copy": "Jiti is an open-source desktop tool."
+  }
+}
