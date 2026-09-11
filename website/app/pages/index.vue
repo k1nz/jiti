@@ -3,13 +3,14 @@ import { PhCaretDown, PhNotebook, PhTextAa, PhTranslate } from '@phosphor-icons/
 
 const { t } = useI18n()
 const { repoUrl } = useDownloads()
+const iconSrc = `${useRuntimeConfig().app.baseURL}icon.png`
 
 useSeoMeta({
   title: () => t('meta.title'),
   description: () => t('meta.description'),
   ogTitle: () => t('meta.title'),
   ogDescription: () => t('meta.description'),
-  ogImage: '/icon.png',
+  ogImage: iconSrc,
   themeColor: '#FFF4DD',
 })
 

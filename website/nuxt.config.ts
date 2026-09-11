@@ -1,3 +1,5 @@
+const baseURL = (process.env.NUXT_APP_BASE_URL || '/').replace(/\/?$/, '/')
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   modules: ['@nuxt/fonts', '@nuxtjs/i18n'],
@@ -17,21 +19,24 @@ export default defineNuxtConfig({
     detectBrowserLanguage: false,
   },
   app: {
+    baseURL,
     head: {
       link: [
-        { rel: 'icon', type: 'image/png', href: '/favicon.png' },
-        { rel: 'apple-touch-icon', href: '/icon.png' },
+        { rel: 'icon', type: 'image/png', href: `${baseURL}favicon.png` },
+        { rel: 'apple-touch-icon', href: `${baseURL}icon.png` },
       ],
       meta: [{ name: 'theme-color', content: '#FFF4DD' }],
     },
   },
   routeRules: {
+    '/': { prerender: true },
     '/zh': { prerender: true },
     '/en': { prerender: true },
   },
   nitro: {
     prerender: {
-      routes: ['/zh', '/en'],
+      crawlLinks: true,
+      routes: ['/', '/zh', '/en'],
     },
   },
 })

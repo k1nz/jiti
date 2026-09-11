@@ -5,12 +5,13 @@ const { t, locale } = useI18n()
 const localePath = useLocalePath()
 const switchLocalePath = useSwitchLocalePath()
 const { version, repoUrl } = useDownloads()
+const iconSrc = `${useRuntimeConfig().app.baseURL}icon.png`
 </script>
 
 <template>
   <header class="top">
     <NuxtLink class="brand" :to="localePath('/')">
-      <img src="/icon.png" width="44" height="44" alt="" />
+      <img :src="iconSrc" width="44" height="44" alt="" />
       <span class="brand-name">Jiti</span>
       <span class="ver">{{ version }}</span>
     </NuxtLink>

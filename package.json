@@ -19,6 +19,7 @@
     "check:clippy": "cargo clippy --manifest-path packages/native/Cargo.toml --all-targets",
     "web:dev": "pnpm --dir website dev",
     "web:generate": "pnpm --dir website generate",
+    "web:pages": "pnpm --dir website exec nuxt build --preset github_pages",
     "web:typecheck": "pnpm --dir website typecheck"
   }
 }
