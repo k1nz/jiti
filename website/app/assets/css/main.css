@@ -195,12 +195,18 @@ button, a.pill, a.icon-btn { cursor: pointer; }
 .pill.primary { background: var(--sun); }
 .pill.primary:hover { background: var(--sun-hover); }
 .pill.recommended { box-shadow: 4px 4px 0 var(--ink); }
+.cta-note,
 .all-releases {
-  display: inline-flex;
-  margin-top: 16px;
+  display: block;
+  margin: 16px auto 0;
+  max-width: var(--measure);
   color: var(--ink-2);
   font-size: 14px;
   font-weight: 600;
+}
+.cta-note { margin-bottom: 0; }
+.all-releases {
+  display: inline-flex;
 }
 .all-releases:hover { color: var(--ink); }
 

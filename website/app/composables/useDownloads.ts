@@ -1,25 +1,23 @@
-export const RELEASES_URL = 'https://github.com/k1nz/jiti/releases'
-export const REPO_URL = 'https://github.com/k1nz/jiti'
-export const FALLBACK_VERSION = 'v0.5.0-rc.4'
+import {
+  FALLBACK_VERSION,
+  RELEASES_URL,
+  REPO_URL,
+  isPreRelease,
+  normalizeTag,
+  pickDownloadRelease,
+  pickMacAsset,
+  pickWinAsset,
+  releasePageUrl,
+  type GithubRelease,
+} from '~/utils/releases'
 
-interface GithubAsset {
-  name: string
-  browser_download_url: string
-}
-
-interface GithubRelease {
-  tag_name?: string
-  assets?: GithubAsset[]
-}
-
-function pickAsset(assets: GithubAsset[], tests: RegExp[]) {
-  return assets.find(asset => tests.every(re => re.test(asset.name)))
-}
+export { FALLBACK_VERSION, RELEASES_URL, REPO_URL }
 
 export function useDownloads() {
   const version = useState('jiti-version', () => FALLBACK_VERSION)
-  const macUrl = useState('jiti-mac-url', () => RELEASES_URL)
-  const winUrl = useState('jiti-win-url', () => RELEASES_URL)
+  const channel = useState<'stable' | 'rc'>('jiti-channel', () => 'rc')
+  const macUrl = useState('jiti-mac-url', () => releasePageUrl(FALLBACK_VERSION))
+  const winUrl = useState('jiti-win-url', () => releasePageUrl(FALLBACK_VERSION))
   const platform = useState<'mac' | 'win' | null>('jiti-platform', () => null)
 
   const { data } = useLazyFetch<GithubRelease[]>('https://api.github.com/repos/k1nz/jiti/releases', {
@@ -28,19 +26,15 @@ export function useDownloads() {
   })
 
   watchEffect(() => {
-    const release = Array.isArray(data.value) ? data.value[0] : null
+    const release = Array.isArray(data.value) ? pickDownloadRelease(data.value) : null
     if (!release) return
-    if (release.tag_name) {
-      version.value = release.tag_name.startsWith('v') ? release.tag_name : `v${release.tag_name}`
-    }
+    const tag = normalizeTag(release.tag_name) || FALLBACK_VERSION
+    version.value = tag
+    channel.value = isPreRelease(release) ? 'rc' : 'stable'
+    const page = release.html_url || releasePageUrl(tag)
     const assets = release.assets ?? []
-    const mac =
-      pickAsset(assets, [/\.dmg$/i, /aarch64|arm64/i])
-      || pickAsset(assets, [/\.dmg$/i])
-      || pickAsset(assets, [/darwin|macos/i])
-    const win = pickAsset(assets, [/\.msi$/i]) || pickAsset(assets, [/\.exe$/i])
-    if (mac) macUrl.value = mac.browser_download_url
-    if (win) winUrl.value = win.browser_download_url
+    macUrl.value = pickMacAsset(assets)?.browser_download_url ?? page
+    winUrl.value = pickWinAsset(assets)?.browser_download_url ?? page
   })
 
   onMounted(() => {
@@ -48,5 +42,5 @@ export function useDownloads() {
     platform.value = /Mac|iPhone|iPad/.test(ua) ? 'mac' : /Win/.test(ua) ? 'win' : null
   })
 
-  return { version, macUrl, winUrl, platform, releasesUrl: RELEASES_URL, repoUrl: REPO_URL }
+  return { version, channel, macUrl, winUrl, platform, releasesUrl: RELEASES_URL, repoUrl: REPO_URL }
 }

@@ -8,6 +8,7 @@
   "cta": {
     "mac": "Download macOS",
     "win": "Download Windows",
+    "rc": "No stable release yet — this is preview {version}.",
     "all": "All releases"
   },
   "hero": {

@@ -6,7 +6,7 @@ defineProps<{
 }>()
 
 const { t } = useI18n()
-const { macUrl, winUrl, platform, releasesUrl } = useDownloads()
+const { macUrl, winUrl, platform, releasesUrl, channel, version } = useDownloads()
 const mounted = ref(false)
 
 onMounted(() => {
@@ -36,5 +36,6 @@ const winPrimary = computed(() => mounted.value && platform.value === 'win')
       {{ t('cta.win') }}
     </a>
   </div>
+  <p v-if="channel === 'rc'" class="cta-note">{{ t('cta.rc', { version }) }}</p>
   <a v-if="showAll" class="all-releases" :href="releasesUrl">{{ t('cta.all') }}</a>
 </template>

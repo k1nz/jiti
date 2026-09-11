@@ -1,9 +1,10 @@
 name: RC Build
 
-# Internal builds for the maintainer and a small trusted circle, not a public
-# release. Signed with a self-signed certificate so that Accessibility grants
-# survive upgrades; not notarized, so recipients approve the app once in
-# System Settings > Privacy & Security. Does not create a public GitHub Release.
+# Internal RC builds. Signed with a self-signed certificate so that
+# Accessibility grants survive upgrades; not notarized, so recipients approve
+# the app once in System Settings > Privacy & Security.
+# Tag pushes also publish a GitHub prerelease so the website can offer RC
+# installers until a stable release exists. workflow_dispatch stays artifacts-only.
 #
 # Required repository secrets (macOS legs):
 #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, KEYCHAIN_PASSWORD
@@ -16,7 +17,7 @@ on:
       - 'v0.5.0-rc.*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -82,6 +83,10 @@ jobs:
           projectPath: packages/native
           args: ${{ matrix.args }}
           includeUpdaterJson: false
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: Jiti __VERSION__
+          releaseDraft: false
+          prerelease: true
       - name: Reject an ad-hoc package
         if: runner.os == 'macOS'
         shell: bash

@@ -8,6 +8,7 @@
   "cta": {
     "mac": "下载 macOS",
     "win": "下载 Windows",
+    "rc": "当前没有正式版，下载的是预览版 {version}。",
     "all": "查看全部版本"
   },
   "hero": {
