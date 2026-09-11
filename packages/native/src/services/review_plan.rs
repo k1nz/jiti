@@ -185,16 +185,13 @@ fn from_mistake(item: &Mistake) -> DraftItem {
 
 fn from_clip(item: &Clip) -> DraftItem {
     let (expected, hint) = clips::bilingual_pair(&item.text, item.note.as_deref());
-    let prompt_text = hint
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            if expected.chars().any(|c| c.is_ascii_alphabetic()) {
-                dictation_mask(&expected)
-            } else {
-                expected.clone()
-            }
-        });
+    let prompt_text = hint.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| {
+        if expected.chars().any(|c| c.is_ascii_alphabetic()) {
+            dictation_mask(&expected)
+        } else {
+            expected.clone()
+        }
+    });
     DraftItem {
         source_kind: SOURCE_CLIP.into(),
         source_id: item.id,
@@ -317,10 +314,17 @@ fn sort_pool(mistakes: &[Mistake], clips: &[Clip]) -> Vec<DraftItem> {
             (-2, c.created_at.clone(), item)
         }))
         .collect();
-    items.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(a.2.bucket_key.cmp(&b.2.bucket_key)));
+    items.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then(b.1.cmp(&a.1))
+            .then(a.2.bucket_key.cmp(&b.2.bucket_key))
+    });
     // Cluster by bucket while keeping severity order loosely: group consecutive by key after sort.
     let mut clustered: Vec<DraftItem> = Vec::new();
-    let mut remaining = items.into_iter().map(|(_, _, item)| item).collect::<Vec<_>>();
+    let mut remaining = items
+        .into_iter()
+        .map(|(_, _, item)| item)
+        .collect::<Vec<_>>();
     while !remaining.is_empty() {
         let key = remaining[0].bucket_key.clone();
         let mut keep = Vec::new();
@@ -417,7 +421,11 @@ pub fn apply_llm_days(draft: &mut DraftPlan, days: &[LlmDay]) {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let drill = copy.drill.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let drill = copy
+            .drill
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
         slot.drill = drill.map(str::to_string);
     }
 }
@@ -553,8 +561,7 @@ fn assemble(
     prompt_version: Option<String>,
     items: Vec<ReviewPlanItem>,
 ) -> Result<ReviewPlan, String> {
-    let days: Vec<ReviewPlanDay> =
-        serde_json::from_str(&days_json).map_err(|e| e.to_string())?;
+    let days: Vec<ReviewPlanDay> = serde_json::from_str(&days_json).map_err(|e| e.to_string())?;
     let current_day = current_day(&days, &items);
     Ok(ReviewPlan {
         id,
@@ -628,10 +635,7 @@ fn valid_outcome(value: &str) -> bool {
     )
 }
 
-pub fn grade(
-    conn: &Connection,
-    request: &ReviewGradeRequest,
-) -> Result<ReviewGradeResult, String> {
+pub fn grade(conn: &Connection, request: &ReviewGradeRequest) -> Result<ReviewGradeResult, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, day_index, sort_order, source_kind, source_id, prompt_text,
@@ -902,10 +906,16 @@ mod tests {
     fn regenerate_archives_previous() {
         let conn = db();
         let m = mistake(1, "go", "grammar", "high");
-        let first = persist(&conn, &build_draft(&[m.clone()], &[]).unwrap(), "a", "LLM", 1, "v1")
-            .unwrap();
-        let second = persist(&conn, &build_draft(&[m], &[]).unwrap(), "b", "LLM", 1, "v1")
-            .unwrap();
+        let first = persist(
+            &conn,
+            &build_draft(&[m.clone()], &[]).unwrap(),
+            "a",
+            "LLM",
+            1,
+            "v1",
+        )
+        .unwrap();
+        let second = persist(&conn, &build_draft(&[m], &[]).unwrap(), "b", "LLM", 1, "v1").unwrap();
         assert_ne!(first.id, second.id);
         let archived: String = conn
             .query_row(

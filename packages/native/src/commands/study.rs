@@ -6,9 +6,7 @@ use crate::providers::plan::{
     apply_copy, fallback_summary, fetch_copy, history_from_plan, PLAN_PROMPT_VERSION,
 };
 use crate::providers::{config_for, provider_label, EngineError, EngineErrorPayload, PROVIDER_LLM};
-use crate::services::review_plan::{
-    self, ReviewGradeRequest, ReviewGradeResult, ReviewPlan,
-};
+use crate::services::review_plan::{self, ReviewGradeRequest, ReviewGradeResult, ReviewPlan};
 use crate::services::{database, history, settings, study_window, transport};
 
 #[tauri::command]

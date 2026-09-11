@@ -168,7 +168,14 @@ fn merge_pair(
         (Some(en), Some(zh)) if normalize_text(&en) != normalize_text(&zh) => (en, Some(zh)),
         (Some(en), _) => (en, None),
         (None, Some(zh)) => (zh, None),
-        _ => bilingual_pair(b_text, if b_note.is_empty() { None } else { Some(b_note) }),
+        _ => bilingual_pair(
+            b_text,
+            if b_note.is_empty() {
+                None
+            } else {
+                Some(b_note)
+            },
+        ),
     }
 }
 
@@ -256,9 +263,7 @@ fn find_existing(
             "SELECT {SELECT_COLUMNS} FROM clips WHERE note IS NOT NULL AND trim(note) != ''"
         ))
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], map_row)
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], map_row).map_err(|e| e.to_string())?;
     for row in rows {
         let clip = row.map_err(|e| e.to_string())?;
         if let Some(stored) = clip.note.as_deref() {
@@ -305,8 +310,12 @@ pub fn save(conn: &Connection, item: &NewClip) -> Result<ClipSaveResult, String>
         return Err("收藏内容为空".into());
     }
     if let Some(existing) = find_existing(conn, &text, note.as_deref())? {
-        let (merged_text, merged_note) =
-            merge_pair(&existing.text, existing.note.as_deref(), &text, note.as_deref());
+        let (merged_text, merged_note) = merge_pair(
+            &existing.text,
+            existing.note.as_deref(),
+            &text,
+            note.as_deref(),
+        );
         let clip = if merged_text != existing.text || merged_note != existing.note {
             persist_pair(conn, existing.id, &merged_text, merged_note.as_deref())?
         } else {
@@ -369,9 +378,7 @@ pub fn list(conn: &Connection, filter: &ClipFilter) -> Result<ClipList, String> 
         stmt.query_row(params_from_iter(bound.iter()), |row| row.get(0))
             .map_err(|e| e.to_string())?
     };
-    let mut sql = format!(
-        "SELECT {SELECT_COLUMNS} FROM clips WHERE {where_sql} ORDER BY id DESC"
-    );
+    let mut sql = format!("SELECT {SELECT_COLUMNS} FROM clips WHERE {where_sql} ORDER BY id DESC");
     let mut query_params: Vec<String> = bound;
     if let Some(limit) = filter.limit.filter(|n| *n > 0) {
         sql.push_str(" LIMIT ?");
@@ -510,7 +517,10 @@ mod tests {
 
     #[test]
     fn normalize_collapses_case_and_space() {
-        assert_eq!(normalize_text("  On  The  Other  Hand  "), "on the other hand");
+        assert_eq!(
+            normalize_text("  On  The  Other  Hand  "),
+            "on the other hand"
+        );
         assert_eq!(infer_kind("Epoch"), KIND_WORD);
         assert_eq!(infer_kind("on the other hand"), KIND_PHRASE);
         assert_eq!(
