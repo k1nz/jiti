@@ -1,6 +1,6 @@
 export const RELEASES_URL = 'https://github.com/k1nz/jiti/releases'
 export const REPO_URL = 'https://github.com/k1nz/jiti'
-export const FALLBACK_VERSION = 'v0.5.0-rc.4'
+export const FALLBACK_VERSION = 'v0.5.0-rc.6'
 
 export interface GithubAsset {
   name: string
