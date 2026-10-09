@@ -50,6 +50,7 @@ import { unwrap } from '../ipc/unwrap';
 import {
   guessTarget,
   languagePairLabel,
+  oppositeLanguage,
   resolveSource,
   type LangCode,
   type SourceChoice,
@@ -86,6 +87,7 @@ const TABS: ReadonlyArray<{ key: PanelMode; icon: Component }> = [
 
 const source = ref<SourceChoice>('auto');
 const target = ref<LangCode>('zh');
+const userTargetOverride = ref(false);
 const translateStatus = ref<'idle' | 'loading' | 'done' | 'error'>('idle');
 const translateSpinner = ref(false);
 let translateSpinnerTimer: ReturnType<typeof setTimeout> | undefined;
@@ -270,6 +272,23 @@ function applyDelayedCapture(selected: SelectedText, epoch: number) {
 function onSearchInput() {
   if (applyingCapture) return;
   inputDirty.value = true;
+  userTargetOverride.value = false;
+}
+
+function updateTargetFromSource() {
+  if (userTargetOverride.value) return;
+  if (source.value === 'auto') {
+    const text = store.input.trim();
+    if (text) {
+      target.value = guessTarget(text);
+    }
+  } else {
+    target.value = oppositeLanguage(source.value);
+  }
+}
+
+function onTargetChange() {
+  userTargetOverride.value = true;
 }
 
 async function copyResult() {
@@ -675,6 +694,7 @@ onBeforeUnmount(() => {
   unlistenEnrich?.();
   unlistenClip?.();
   if (clipFlashTimer !== undefined) clearTimeout(clipFlashTimer);
+  if (inputDebounceTimer !== undefined) clearTimeout(inputDebounceTimer);
   stopPermissionPoll();
 });
 
@@ -695,6 +715,21 @@ watch(
     if (visible && currentPreferences().focusOnInvoke && !showOnboarding.value) {
       void nextTick(() => searchEl.value?.focus());
     }
+  },
+);
+
+watch(source, () => {
+  updateTargetFromSource();
+});
+
+let inputDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+watch(
+  () => store.input,
+  () => {
+    if (inputDebounceTimer !== undefined) clearTimeout(inputDebounceTimer);
+    inputDebounceTimer = setTimeout(() => {
+      updateTargetFromSource();
+    }, 300);
   },
 );
 </script>
@@ -783,7 +818,7 @@ watch(
               <option value="en">{{ t('lang.en') }}</option>
             </select>
             <span class="lang-arrow" aria-hidden="true">→</span>
-            <select v-model="target" class="native-select" :aria-label="t('lang.zh')">
+            <select v-model="target" class="native-select" :aria-label="t('lang.zh')" @change="onTargetChange">
               <option value="zh">{{ t('lang.zh') }}</option>
               <option value="en">{{ t('lang.en') }}</option>
             </select>

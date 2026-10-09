@@ -39,6 +39,11 @@ export function guessTarget(text: string): LangCode {
   return hasCjk(text) ? 'en' : 'zh';
 }
 
+/** 返回相反的语言：zh ↔ en */
+export function oppositeLanguage(lang: LangCode): LangCode {
+  return lang === 'zh' ? 'en' : 'zh';
+}
+
 export function resolveSource(choice: SourceChoice, text: string): string | null {
   if (choice !== 'auto') return choice;
   return guessSource(text);

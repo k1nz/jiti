@@ -4,6 +4,7 @@ import {
   guessTarget,
   languageLabel,
   languagePairLabel,
+  oppositeLanguage,
   resolveSource,
 } from '../src/language';
 
@@ -46,5 +47,40 @@ describe('languageLabel', () => {
     expect(languageLabel('EN')).toBe('lang.en');
     expect(languageLabel('zh-Hans')).toBe('lang.zh');
     expect(languagePairLabel('en', 'zh')).toBe('lang.en → lang.zh');
+  });
+});
+
+describe('oppositeLanguage', () => {
+  it('中文对应英文', () => {
+    expect(oppositeLanguage('zh')).toBe('en');
+  });
+
+  it('英文对应中文', () => {
+    expect(oppositeLanguage('en')).toBe('zh');
+  });
+});
+
+describe('自动目标语言切换', () => {
+  it('纯中文文本应该目标为英文', () => {
+    expect(guessTarget('你好世界')).toBe('en');
+  });
+
+  it('纯英文文本应该目标为中文', () => {
+    expect(guessTarget('Hello World')).toBe('zh');
+  });
+
+  it('混合中英文本应该目标为英文', () => {
+    expect(guessTarget('Hello 世界')).toBe('en');
+    expect(guessTarget('你好 World')).toBe('en');
+  });
+
+  it('明确选择中文源时应该目标为英文', () => {
+    const source = 'zh';
+    expect(oppositeLanguage(source)).toBe('en');
+  });
+
+  it('明确选择英文源时应该目标为中文', () => {
+    const source = 'en';
+    expect(oppositeLanguage(source)).toBe('zh');
   });
 });
