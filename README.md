@@ -1,55 +1,103 @@
 # Jiti
 
-快速翻译 / 语法检查桌面工具（工作代号）。Raycast 风格的系统级浮层：
-全局快捷键唤起、常驻后台、不抢焦点、秒级显示。架构见
-[docs/architecture.md](docs/architecture.md)（v0.5.0-rc.1，决策以文档为准）。
-M5 RC 门禁见 [docs/m5-readiness.md](docs/m5-readiness.md)，双端 QA 见 [docs/m5-qa.md](docs/m5-qa.md)。
-IPC 契约见 [docs/api-contract.md](docs/api-contract.md)。
+<p align="center">
+  <img src="docs/images/product.png" width="1080" alt="Jiti overlay translating the selected sentence “keep the lights on until the last train leaves”.">
+</p>
 
-## 技术栈
+<p align="center">
+  <a href="https://k1nz.github.io/jiti/">Website</a>
+  ·
+  <a href="https://github.com/k1nz/jiti/releases">Releases</a>
+  ·
+  <a href="#中文">中文</a>
+  ·
+  <a href="#english">English</a>
+</p>
 
-- 原生壳：Tauri 2（Rust）+ objc2（macOS 原生缝：无焦点面板 / 首帧同步 / 光标定位）
-- 前端：Vue 3 + Vite + TypeScript + vue-i18n（`packages/ui`，主面板 `src/panel/`，设置独立入口 `src/settings/`）
-- 数据库：SQLite（`history` / `mistakes`，`PRAGMA user_version` 迁移）
-- IPC：tauri-specta 单源契约 → 构建时生成 `packages/ui/src/ipc/bindings.ts`
+选中一段文字，按一下全局快捷键。译文或语法结果出现在浮层里，你正在用的窗口还在前面。
 
-## 目录（按 architecture.md §10）
+Select some text and press a global shortcut. The translation or grammar result shows up in an overlay, and the window you were using stays in front.
 
-- `packages/ui/` — WebView 前端（Vue；面板常驻 + 设置独立入口）
-- `packages/native/` — = src-tauri（Rust：commands / services / providers / capabilities）
-- `rust-toolchain.toml` — 本机使用 stable Rust（高于系统默认 1.81）
+## 中文
 
-## 运行
+Jiti 是常驻后台的系统浮层，面向 macOS 与 Windows 10/11。它在本地运行，用你自己的翻译或模型 Key，不需要账号。
+
+### 能做什么
+
+- **翻译。** 中英自动判向，也可以自己输入。已启用的引擎会并行返回，目前包括 DeepL、有道、Google、Bing，以及 OpenAI 兼容的大模型。
+- **语法。** 检查英语句子，给出改写，并逐条说明问题。
+- **错题本。** 语法错误会自动归档。可以按类型和时间筛选，导出 Markdown，也可以在独立的复习课窗口里做填空和默写。
+- **收藏与历史。** 热键可以静默收藏当前选中的短语。最近的查询留在历史里。
+
+macOS 上，面板走原生的无焦点路径显示。设置里也可以改成唤起时聚焦输入框。读取其他 App 里的选中文字需要辅助功能权限；不开启时，仍然可以手动输入。
+
+### 默认快捷键
+
+| | macOS | Windows |
+| --- | --- | --- |
+| 翻译 | `⌥⌘T` | `Ctrl+Shift+T` |
+| 语法 | `⌥⌘G` | `Ctrl+Alt+G` |
+| 统一面板 | `⌥⌘Space` | `Ctrl+Alt+Space` |
+| 收藏选中 | `⌥⌘S` | `Ctrl+Alt+S` |
+
+面板里 `Esc` 隐藏，`Tab` 切换模式。快捷键可以在设置里重配：面板内 `⌘,` / `Ctrl+,`，或从托盘打开「设置」。托盘还有「显示面板」和「退出」。
+
+### 下载
+
+当前发布的是预览版。安装包在 [Releases](https://github.com/k1nz/jiti/releases)，介绍页在 [k1nz.github.io/jiti](https://k1nz.github.io/jiti/)。
+
+### 从源码运行
+
+技术栈是 Tauri 2（Rust）和 Vue 3。界面在 `packages/ui`，原生层在 `packages/native`。架构见 [docs/architecture.md](docs/architecture.md)，IPC 契约见 [docs/api-contract.md](docs/api-contract.md)。
 
 ```bash
-pnpm install            # 首次（pnpm 工作区）
-pnpm dev                # tauri dev（自动起 vite + 编译 + 启动 App）
-pnpm ui:typecheck       # vue-tsc
-pnpm test               # vitest + cargo test（cargo test 会重新导出 bindings.ts）
-pnpm check:versions     # 对齐 package / Cargo / tauri 版本与 identifier
-pnpm build              # 生产构建（tauri build；macOS ad-hoc 签名）
-pnpm build:mac          # macOS 生产构建，用稳定证书签名（见下）
+pnpm install
+pnpm dev          # 启动 Vite，编译并打开 App
+pnpm test         # vitest + cargo test
+pnpm build        # 生产构建
+pnpm build:mac    # macOS：用本地证书签名后安装到 /Applications
 ```
 
-macOS 上如果要装到 `/Applications` 长期使用，用 `pnpm build:mac`。它把
-`APPLE_SIGNING_IDENTITY` 设为自签名证书 `Jiti Local Dev`，签出来的包
-designated requirement 锚定在证书上，重装或升级都不会让「辅助功能」授权失效。
-证书材料与重建方法见 [`docs/macos-signing.md`](docs/macos-signing.md)。
-`tauri.conf.json` 里的 `signingIdentity` 必须保持 `"-"`（`pnpm check:versions` 会校验），
-身份只经由环境变量注入——本地用 `pnpm build:mac`，CI 由 workflow 提供。
+`pnpm build:mac` 会把「辅助功能」授权锚在自签名证书 `Jiti Local Dev` 上，重装或升级后授权还在。证书材料见 [docs/macos-signing.md](docs/macos-signing.md)。
 
-CI：`.github/workflows/ci.yml`。内部 RC 包：`.github/workflows/rc-build.yml`（手动或 `v0.5.0-rc.*` tag）。正式签名发布：`.github/workflows/release.yml`（M5.1，需 `release` Environment 的 Apple 证书；Windows 签名与 `JITI_SENTRY_DSN` 可选且不与 Apple 凭据耦合）。
+## English
 
-开发自检钩子（debug 构建，`services/dev.rs`）：
+Jiti is a system overlay for macOS and Windows 10/11. It stays in the background, runs locally, and uses your own translation or model key. There is no account.
+
+### What it does
+
+- **Translate.** Chinese and English, with the direction detected automatically. You can also type. Enabled engines answer in parallel: DeepL, Youdao, Google, Bing, and an OpenAI-compatible model.
+- **Grammar.** Check an English sentence, get a rewrite, and read a note for each issue.
+- **Notebook.** Grammar misses are filed automatically. Filter them, export Markdown, and practice fill-in or dictation in a separate study window.
+- **Clips and history.** A shortcut saves the current selection without opening the panel. Recent queries stay in history.
+
+On macOS the panel uses a native no-activate path, so the window you were typing in stays in front. Settings can focus the input on invoke instead. Reading a selection in another app needs Accessibility permission. You can also type into the panel directly.
+
+### Default shortcuts
+
+| | macOS | Windows |
+| --- | --- | --- |
+| Translate | `⌥⌘T` | `Ctrl+Shift+T` |
+| Grammar | `⌥⌘G` | `Ctrl+Alt+G` |
+| Panel | `⌥⌘Space` | `Ctrl+Alt+Space` |
+| Save selection | `⌥⌘S` | `Ctrl+Alt+S` |
+
+`Esc` hides the panel. `Tab` switches mode. Remap shortcuts in Settings (`⌘,` / `Ctrl+,` from the panel, or Settings from the tray). The tray also shows the panel and quits the app.
+
+### Download
+
+The current build is a preview. Installers are on [Releases](https://github.com/k1nz/jiti/releases). The site is [k1nz.github.io/jiti](https://k1nz.github.io/jiti/).
+
+### Run from source
+
+The stack is Tauri 2 (Rust) and Vue 3. The UI lives in `packages/ui`, the native layer in `packages/native`. Architecture: [docs/architecture.md](docs/architecture.md). IPC contract: [docs/api-contract.md](docs/api-contract.md).
 
 ```bash
-JITI_AUTOSHOW_MS=1500 pnpm dev   # 启动 1.5s 后自动唤起面板（与热键同代码路径）
-JITI_CENTER=1 JITI_AUTOSHOW_MS=1500 pnpm dev   # 配合居中（截图对齐）
+pnpm install
+pnpm dev          # Vite, compile, and launch the app
+pnpm test         # vitest + cargo test
+pnpm build        # production build
+pnpm build:mac    # macOS: sign with the local cert, then install to /Applications
 ```
 
-默认热键：
-
-- macOS：`⌥⌘T` 翻译 / `⌥⌘G` 语法 / `⌥⌘Space` 统一面板 / `⌥⌘S` 收藏选中
-- Windows：`Ctrl+Shift+T` 翻译 / `Ctrl+Alt+G` 语法 / `Ctrl+Alt+Space` 统一面板 / `Ctrl+Alt+S` 收藏选中
-
-可在独立设置窗口里重配（面板 `⌘,` / `Ctrl-,`，或托盘「设置」）。托盘提供「显示面板 / 设置 / 退出」。
+`pnpm build:mac` anchors the Accessibility grant to the self-signed `Jiti Local Dev` certificate, so reinstalls and upgrades keep the permission. Certificate notes: [docs/macos-signing.md](docs/macos-signing.md).
