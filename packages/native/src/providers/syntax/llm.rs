@@ -7,8 +7,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{
-    parse_ndjson_line, NdjsonClause, NdjsonConstituent, NdjsonProfile, NdjsonRecord, ParseFail,
-    SyntaxDraft, SyntaxProgressEvent, SyntaxResult,
+    parse_ndjson_line, NdjsonChunk, NdjsonReading, NdjsonRecord, NdjsonSkeleton, NdjsonStructure,
+    NdjsonTip, ParseFail, SyntaxDraft, SyntaxProgressEvent, SyntaxResult,
 };
 use crate::providers::grammar::sse::{fold_openai_sse_until, LineAssembler};
 use crate::providers::llm::{completions_url, first_choice_text, with_openai_compat};
@@ -17,67 +17,78 @@ use crate::providers::{provider_label, EngineError, ProviderConfig, PROVIDER_LLM
 use crate::services::transport::GRAMMAR_TIMEOUT;
 use crate::services::transport::{first_byte_budget, remaining_budget, retry_budget, Transport};
 
-pub const SYSTEM_PROMPT: &str = r#"You are a syntax analyst for Chinese-speaking learners.
-Analyze the input sentence. It may be Chinese, English, or mixed.
-Explain the summary and every note in Simplified Chinese.
+/// 未单独配置 max_tokens 时，给讲解留够篇幅。
+const DEFAULT_MAX_TOKENS: u32 = 2048;
+
+pub const SYSTEM_PROMPT: &str = r#"You are a syntax tutor for Chinese-speaking learners.
+Explain an input sentence. It may be Chinese, English, or mixed.
+Write every gloss, label, note, reading, and tip in Simplified Chinese.
 Do not correct grammar and do not list mistakes.
 Output ONLY NDJSON: one JSON object per line. No markdown, no commentary.
 
 Emit records in this exact order:
-1. {"type":"summary","text":"<one Chinese sentence on sentence type, backbone, and clause relations>"}
-2. {"type":"profile","language":"zh|en|mixed","sentenceType":"declarative|interrogative|imperative|exclamatory|fragment","tense":null|"present|past|future","aspect":null|"simple|progressive|perfect|perfect_progressive","voice":null|"active|passive"}
-3. zero or more constituent records, in order of appearance
-4. zero or more clause records
-5. {"type":"done"}
+1. one or more chunk records, in reading order
+2. one or more reading records; put the straightforward reading first, then a more natural one when it differs
+3. one or more structure records
+4. zero or more skeleton records
+5. zero or more tip records, only for points that are easy to misread
+6. {"type":"done"}
 
-Each constituent record:
-{"type":"constituent","role":"subject|predicate|object|attribute|adverbial|complement|other","text":"<exact substring copied from the input>","note":"<one Chinese sentence>"}
+Chunk:
+{"type":"chunk","text":"<exact substring copied from the input>","gloss":"<Chinese meaning of this piece>","notes":["<optional word-sense or context note>"]}
 
-Each clause record:
-{"type":"clause","kind":"main|relative|noun|adverbial|coordinate|other","text":"<exact substring copied from the input>","note":"<one Chinese sentence>"}
+Reading:
+{"type":"reading","text":"<full-sentence Chinese>","tone":"literal|natural"}
+
+Structure:
+{"type":"structure","role":"subject|predicate|object|attribute|adverbial|complement|other","text":"<exact substring copied from the input>","label":"<Chinese role phrase such as 名词性短语，作主语>","note":"<optional note about an omitted word or clause, or empty string>"}
+
+Skeleton:
+{"type":"skeleton","role":"subject|predicate|object|attribute|adverbial|complement|other","text":"<pattern line; may add omitted words in parentheses, such as (that)>"}
+
+Tip:
+{"type":"tip","text":"<one Chinese point a learner might misread>"}
 
 Rules:
-- text MUST be copied verbatim from the input.
-- language MUST be one of: zh, en, mixed.
-- sentenceType MUST be one of: declarative, interrogative, imperative, exclamatory, fragment.
-- tense MUST be null or one of: present, past, future. Use null when the sentence has no tense.
-- aspect MUST be null or one of: simple, progressive, perfect, perfect_progressive. Use null when not applicable.
-- voice MUST be null or one of: active, passive. Use null when not applicable.
+- chunk.text and structure.text MUST be copied verbatim from the input.
+- skeleton.text MAY include words that were omitted from the input.
+- tone MUST be literal or natural.
 - role MUST be one of: subject, predicate, object, attribute, adverbial, complement, other.
-- kind MUST be one of: main, relative, noun, adverbial, coordinate, other.
+- Omit tips when nothing is easy to misread.
 - Do not wrap output in markdown fences.
 "#;
 
-pub const RETRY_SYSTEM_PROMPT: &str = r#"You are a syntax analyst for Chinese-speaking learners.
-Analyze the input sentence. It may be Chinese, English, or mixed.
-Explain the summary and every note in Simplified Chinese.
+pub const RETRY_SYSTEM_PROMPT: &str = r#"You are a syntax tutor for Chinese-speaking learners.
+Explain an input sentence. It may be Chinese, English, or mixed.
+Write every gloss, label, note, reading, and tip in Simplified Chinese.
 Do not correct grammar and do not list mistakes.
 Output a SINGLE JSON object, no markdown, no NDJSON:
 
-{"summary":"<one Chinese sentence>","profile":{"language":"zh|en|mixed","sentenceType":"declarative|interrogative|imperative|exclamatory|fragment","tense":null|"present|past|future","aspect":null|"simple|progressive|perfect|perfect_progressive","voice":null|"active|passive"},"constituents":[{"role":"subject|predicate|object|attribute|adverbial|complement|other","text":"<exact substring copied from the input>","note":"<one Chinese sentence>"}],"clauses":[{"kind":"main|relative|noun|adverbial|coordinate|other","text":"<exact substring copied from the input>","note":"<one Chinese sentence>"}]}
+{"chunks":[{"text":"<exact substring copied from the input>","gloss":"<Chinese meaning>","notes":["<optional note>"]}],"readings":[{"text":"<full-sentence Chinese>","tone":"literal|natural"}],"structures":[{"role":"subject|predicate|object|attribute|adverbial|complement|other","text":"<exact substring copied from the input>","label":"<Chinese role phrase>","note":"<optional note or empty string>"}],"skeletons":[{"role":"subject|predicate|object|attribute|adverbial|complement|other","text":"<pattern line; may include omitted words such as (that)>"}],"tips":[{"text":"<one Chinese point>"}]}
 
 Rules:
-- text MUST be copied verbatim from the input.
-- language MUST be one of: zh, en, mixed.
-- sentenceType MUST be one of: declarative, interrogative, imperative, exclamatory, fragment.
-- tense MUST be null or one of: present, past, future. Use null when the sentence has no tense.
-- aspect MUST be null or one of: simple, progressive, perfect, perfect_progressive. Use null when not applicable.
-- voice MUST be null or one of: active, passive. Use null when not applicable.
+- chunk text and structure text MUST be copied verbatim from the input.
+- skeleton text MAY include words that were omitted from the input.
+- tone MUST be literal or natural.
 - role MUST be one of: subject, predicate, object, attribute, adverbial, complement, other.
-- kind MUST be one of: main, relative, noun, adverbial, coordinate, other.
-- constituents and clauses may be empty arrays.
+- readings must start with tone literal.
+- skeletons and tips may be empty arrays.
 - Do not wrap output in markdown fences.
 "#;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StrictSyntaxJson {
-    summary: String,
-    profile: NdjsonProfile,
     #[serde(default)]
-    constituents: Vec<NdjsonConstituent>,
+    chunks: Vec<NdjsonChunk>,
     #[serde(default)]
-    clauses: Vec<NdjsonClause>,
+    readings: Vec<NdjsonReading>,
+    #[serde(default)]
+    structures: Vec<NdjsonStructure>,
+    #[serde(default)]
+    skeletons: Vec<NdjsonSkeleton>,
+    #[serde(default)]
+    tips: Vec<NdjsonTip>,
 }
 
 #[cfg(test)]
@@ -314,25 +325,20 @@ async fn check_strict(
         })?;
 
     let mut draft = SyntaxDraft::default();
-    apply_record(
-        &mut draft,
-        NdjsonRecord::Summary {
-            text: strict.summary,
-        },
-        text,
-        emit,
-    )?;
-    apply_record(
-        &mut draft,
-        NdjsonRecord::Profile(strict.profile),
-        text,
-        emit,
-    )?;
-    for raw in strict.constituents {
-        apply_record(&mut draft, NdjsonRecord::Constituent(raw), text, emit)?;
+    for raw in strict.chunks {
+        apply_record(&mut draft, NdjsonRecord::Chunk(raw), text, emit)?;
     }
-    for raw in strict.clauses {
-        apply_record(&mut draft, NdjsonRecord::Clause(raw), text, emit)?;
+    for raw in strict.readings {
+        apply_record(&mut draft, NdjsonRecord::Reading(raw), text, emit)?;
+    }
+    for raw in strict.structures {
+        apply_record(&mut draft, NdjsonRecord::Structure(raw), text, emit)?;
+    }
+    for raw in strict.skeletons {
+        apply_record(&mut draft, NdjsonRecord::Skeleton(raw), text, emit)?;
+    }
+    for raw in strict.tips {
+        apply_record(&mut draft, NdjsonRecord::Tip(raw), text, emit)?;
     }
     apply_record(&mut draft, NdjsonRecord::Done, text, emit)?;
     draft
@@ -373,7 +379,7 @@ fn request_parts(
         completions_url(&base),
         format!("Bearer {api_key}"),
         model,
-        cfg.max_tokens.unwrap_or(1024),
+        cfg.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS),
     ))
 }
 
@@ -476,10 +482,10 @@ mod tests {
 
     fn ndjson_sse_body() -> String {
         let records = [
-            r#"{"type":"summary","text":"含定语从句的过去时陈述句"}"#,
-            r#"{"type":"profile","language":"en","sentenceType":"declarative","tense":"past","aspect":"simple","voice":"active"}"#,
-            r#"{"type":"constituent","role":"subject","text":"The book","note":"主语"}"#,
-            r#"{"type":"clause","kind":"relative","text":"that I bought","note":"修饰 book"}"#,
+            r#"{"type":"chunk","text":"The book","gloss":"这本书","notes":[]}"#,
+            r#"{"type":"reading","text":"我买的那本书很贵。","tone":"literal"}"#,
+            r#"{"type":"structure","role":"subject","text":"The book","label":"主语","note":""}"#,
+            r#"{"type":"skeleton","role":"subject","text":"The book"}"#,
             r#"{"type":"done"}"#,
         ];
         let joined = records.join("\n");
@@ -520,16 +526,16 @@ mod tests {
         });
         mock.assert();
         let result = out.expect("stream syntax should succeed");
-        assert_eq!(result.summary, "含定语从句的过去时陈述句");
-        assert_eq!(result.constituents.len(), 1);
-        assert_eq!(result.constituents[0].offset, Some(0));
-        assert_eq!(result.clauses.len(), 1);
+        assert_eq!(result.primary_reading(), "我买的那本书很贵。");
+        assert_eq!(result.chunks.len(), 1);
+        assert_eq!(result.chunks[0].offset, Some(0));
+        assert_eq!(result.structures.len(), 1);
         assert!(events
             .iter()
-            .any(|e| matches!(e, SyntaxProgressEvent::Summary { .. })));
+            .any(|e| matches!(e, SyntaxProgressEvent::Chunk { .. })));
         assert!(events
             .iter()
-            .any(|e| matches!(e, SyntaxProgressEvent::Profile { .. })));
+            .any(|e| matches!(e, SyntaxProgressEvent::Reading { .. })));
         assert!(events
             .iter()
             .any(|e| matches!(e, SyntaxProgressEvent::Finished)));
@@ -556,7 +562,7 @@ mod tests {
             .mock("POST", "/v1/chat/completions")
             .with_status(200)
             .with_body(
-                r#"{"choices":[{"message":{"content":"{\"summary\":\"简单陈述句\",\"profile\":{\"language\":\"en\",\"sentenceType\":\"declarative\",\"tense\":\"present\",\"aspect\":\"simple\",\"voice\":\"active\"},\"constituents\":[{\"role\":\"subject\",\"text\":\"Hello\",\"note\":\"称呼\"}],\"clauses\":[]}"}}]}"#,
+                r#"{"choices":[{"message":{"content":"{\"chunks\":[{\"text\":\"Hello\",\"gloss\":\"你好\",\"notes\":[]}],\"readings\":[{\"text\":\"你好。\",\"tone\":\"literal\"}],\"structures\":[{\"role\":\"subject\",\"text\":\"Hello\",\"label\":\"称呼\",\"note\":\"\"}],\"skeletons\":[],\"tips\":[]}"}}]}"#,
             )
             .expect(1)
             .create();
@@ -571,9 +577,10 @@ mod tests {
         bad.assert();
         good.assert();
         let result = out.expect("retry should succeed");
-        assert_eq!(result.summary, "简单陈述句");
-        assert_eq!(result.constituents[0].text, "Hello");
-        assert!(result.clauses.is_empty());
+        assert_eq!(result.primary_reading(), "你好。");
+        assert_eq!(result.chunks[0].text, "Hello");
+        assert!(result.skeletons.is_empty());
+        assert!(result.tips.is_empty());
         assert!(events
             .iter()
             .any(|e| matches!(e, SyntaxProgressEvent::Retrying { .. })));
@@ -621,14 +628,27 @@ mod tests {
     }
 
     #[test]
-    fn prompt_is_bilingual_structure_with_closed_enums() {
+    fn prompt_teaches_modules_with_closed_enums() {
         assert!(SYSTEM_PROMPT.contains("Simplified Chinese"));
         assert!(SYSTEM_PROMPT.contains("NDJSON"));
-        assert!(SYSTEM_PROMPT.contains("perfect_progressive"));
+        assert!(SYSTEM_PROMPT.contains(r#""tone":"literal|natural""#));
         assert!(SYSTEM_PROMPT.contains(r#"{"type":"done"}"#));
         assert!(SYSTEM_PROMPT.contains("Do not correct grammar"));
+        assert!(SYSTEM_PROMPT.contains("Omit tips"));
         assert!(RETRY_SYSTEM_PROMPT.contains("SINGLE JSON object"));
-        assert_eq!(prompt_version(), "syntax-v1");
+        assert_eq!(prompt_version(), "syntax-v2");
+    }
+
+    #[test]
+    fn unset_max_tokens_defaults_to_2048() {
+        let mut configured = cfg("https://example.com/v1");
+        configured.model = Some("gpt-4o-mini".into());
+        configured.max_tokens = None;
+        let (_url, _auth, _model, tokens) = request_parts(&configured, "sk-test").expect("parts");
+        assert_eq!(tokens, 2048);
+        configured.max_tokens = Some(512);
+        let (_url, _auth, _model, tokens) = request_parts(&configured, "sk-test").expect("parts");
+        assert_eq!(tokens, 512);
     }
 
     #[test]

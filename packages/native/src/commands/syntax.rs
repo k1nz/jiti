@@ -7,8 +7,8 @@ use tauri::ipc::Channel;
 use tauri::AppHandle;
 
 use crate::providers::syntax::{
-    begin_syntax_job, run_syntax, syntax_job_is_current, SyntaxLanguage, SyntaxProgressEvent,
-    SyntaxRequest, SyntaxResult,
+    begin_syntax_job, run_syntax, syntax_job_is_current, SyntaxProgressEvent, SyntaxRequest,
+    SyntaxResult,
 };
 use crate::providers::EngineErrorPayload;
 use crate::services::history::{self, NewHistoryEntry};
@@ -47,20 +47,15 @@ pub async fn syntax_analyze(
                 .map(|c| c.write_history)
                 .unwrap_or(true);
             if should_write {
-                let from_lang = match result.profile.language {
-                    SyntaxLanguage::Zh => Some("zh".into()),
-                    SyntaxLanguage::En => Some("en".into()),
-                    SyntaxLanguage::Mixed => None,
-                };
                 let meta = serde_json::to_string(&result).ok();
                 let _ = history::record(
                     &app,
                     NewHistoryEntry {
                         kind: "syntax".into(),
                         input: result.input.clone(),
-                        output: result.summary.clone(),
+                        output: result.primary_reading().to_string(),
                         engine: result.engine.clone(),
-                        from_lang,
+                        from_lang: None,
                         to_lang: None,
                         duration_ms: result.duration_ms as i64,
                         source_app: None,

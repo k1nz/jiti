@@ -2,11 +2,12 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import type {
   EngineErrorPayload,
-  SyntaxClause,
-  SyntaxConstituent,
-  SyntaxProfile,
+  SyntaxChunk,
   SyntaxProgressEvent_Deserialize,
+  SyntaxReading,
   SyntaxResult_Serialize,
+  SyntaxSkeleton,
+  SyntaxStructure,
 } from '../ipc/bindings';
 import { LOADING_SPINNER_DELAY_MS, shouldShowDelayedSpinner } from '../loading';
 
@@ -15,10 +16,11 @@ export type SyntaxStatus = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 export const useSyntaxStore = defineStore('syntax', () => {
   const status = ref<SyntaxStatus>('idle');
   const runId = ref(0);
-  const summary = ref<string | null>(null);
-  const profile = ref<SyntaxProfile | null>(null);
-  const constituents = ref<SyntaxConstituent[]>([]);
-  const clauses = ref<SyntaxClause[]>([]);
+  const chunks = ref<SyntaxChunk[]>([]);
+  const readings = ref<SyntaxReading[]>([]);
+  const structures = ref<SyntaxStructure[]>([]);
+  const skeletons = ref<SyntaxSkeleton[]>([]);
+  const tips = ref<string[]>([]);
   const result = ref<SyntaxResult_Serialize | null>(null);
   const error = ref<EngineErrorPayload | null>(null);
   const retrying = ref(false);
@@ -27,10 +29,11 @@ export const useSyntaxStore = defineStore('syntax', () => {
 
   const hasContent = computed(
     () =>
-      summary.value !== null ||
-      profile.value !== null ||
-      constituents.value.length > 0 ||
-      clauses.value.length > 0,
+      chunks.value.length > 0 ||
+      readings.value.length > 0 ||
+      structures.value.length > 0 ||
+      skeletons.value.length > 0 ||
+      tips.value.length > 0,
   );
 
   function isLive(id: number) {
@@ -58,10 +61,11 @@ export const useSyntaxStore = defineStore('syntax', () => {
   }
 
   function clearDraft() {
-    summary.value = null;
-    profile.value = null;
-    constituents.value = [];
-    clauses.value = [];
+    chunks.value = [];
+    readings.value = [];
+    structures.value = [];
+    skeletons.value = [];
+    tips.value = [];
     result.value = null;
   }
 
@@ -82,24 +86,29 @@ export const useSyntaxStore = defineStore('syntax', () => {
       case 'started':
         status.value = 'loading';
         break;
-      case 'summary':
+      case 'chunk':
         status.value = 'streaming';
-        summary.value = event.text;
+        chunks.value = [...chunks.value, event.chunk];
         if (hasContent.value) spinnerVisible.value = false;
         break;
-      case 'profile':
+      case 'reading':
         status.value = 'streaming';
-        profile.value = event.profile;
+        readings.value = [...readings.value, event.reading];
         if (hasContent.value) spinnerVisible.value = false;
         break;
-      case 'constituent':
+      case 'structure':
         status.value = 'streaming';
-        constituents.value = [...constituents.value, event.constituent];
+        structures.value = [...structures.value, event.structure];
         if (hasContent.value) spinnerVisible.value = false;
         break;
-      case 'clause':
+      case 'skeleton':
         status.value = 'streaming';
-        clauses.value = [...clauses.value, event.clause];
+        skeletons.value = [...skeletons.value, event.skeleton];
+        if (hasContent.value) spinnerVisible.value = false;
+        break;
+      case 'tip':
+        status.value = 'streaming';
+        tips.value = [...tips.value, event.text];
         if (hasContent.value) spinnerVisible.value = false;
         break;
       case 'retrying':
@@ -120,10 +129,11 @@ export const useSyntaxStore = defineStore('syntax', () => {
   function finish(id: number, finalResult: SyntaxResult_Serialize) {
     if (!isLive(id)) return;
     result.value = finalResult;
-    summary.value = finalResult.summary;
-    profile.value = finalResult.profile;
-    constituents.value = finalResult.constituents;
-    clauses.value = finalResult.clauses;
+    chunks.value = finalResult.chunks;
+    readings.value = finalResult.readings;
+    structures.value = finalResult.structures;
+    skeletons.value = finalResult.skeletons;
+    tips.value = finalResult.tips;
     retrying.value = false;
     spinnerVisible.value = false;
     clearSpinnerTimer();
@@ -149,10 +159,11 @@ export const useSyntaxStore = defineStore('syntax', () => {
   return {
     status,
     runId,
-    summary,
-    profile,
-    constituents,
-    clauses,
+    chunks,
+    readings,
+    structures,
+    skeletons,
+    tips,
     result,
     error,
     retrying,

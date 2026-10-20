@@ -109,8 +109,6 @@ export type CaptureChangedEvent = {
 	selection: SelectedText,
 };
 
-export type ClauseKind = "main" | "relative" | "noun" | "adverbial" | "coordinate" | "other";
-
 export type Clip = {
 	id: number,
 	createdAt: string,
@@ -620,6 +618,8 @@ export type ProvidersSnapshot = {
 	providers: ProviderView[],
 };
 
+export type ReadingTone = "literal" | "natural";
+
 export type ReviewGradeRequest = {
 	itemId: number,
 	answer?: string | null,
@@ -678,8 +678,6 @@ export type SelectedText = {
 
 export type SelectionMethod = "ax" | "uia" | "clipboard" | "manual";
 
-export type SentenceType = "declarative" | "interrogative" | "imperative" | "exclamatory" | "fragment";
-
 /**
  *  settings.json 里的值：JSON 语义的封闭子集（形状与 `serde_json::Value` 同构）。
  * 
@@ -689,78 +687,41 @@ export type SentenceType = "declarative" | "interrogative" | "imperative" | "exc
  */
 export type SettingsValue = "Null" | boolean | number | null | string | SettingsValue[] | ([string, SettingsValue])[];
 
-export type SyntaxAspect = "simple" | "progressive" | "perfect" | "perfect_progressive";
+/**  拆开理解的一块。`text` 必须是原文子串。 */
+export type SyntaxChunk = SyntaxChunk_Serialize | SyntaxChunk_Deserialize;
 
-/**  从句。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
-export type SyntaxClause = SyntaxClause_Serialize | SyntaxClause_Deserialize;
-
-/**  从句。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
-export type SyntaxClause_Deserialize = {
+/**  拆开理解的一块。`text` 必须是原文子串。 */
+export type SyntaxChunk_Deserialize = {
 	offset?: number | null,
 	length?: number | null,
-	kind: ClauseKind,
 	text: string,
-	note: string,
+	gloss: string,
+	notes: string[],
 };
 
-/**  从句。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
-export type SyntaxClause_Serialize = {
+/**  拆开理解的一块。`text` 必须是原文子串。 */
+export type SyntaxChunk_Serialize = {
 	offset?: number | null,
 	length?: number | null,
-	kind: ClauseKind,
 	text: string,
-	note: string,
-};
-
-/**  句子成分。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
-export type SyntaxConstituent = SyntaxConstituent_Serialize | SyntaxConstituent_Deserialize;
-
-/**  句子成分。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
-export type SyntaxConstituent_Deserialize = {
-	offset?: number | null,
-	length?: number | null,
-	role: ConstituentRole,
-	text: string,
-	note: string,
-};
-
-/**  句子成分。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
-export type SyntaxConstituent_Serialize = {
-	offset?: number | null,
-	length?: number | null,
-	role: ConstituentRole,
-	text: string,
-	note: string,
-};
-
-export type SyntaxLanguage = "zh" | "en" | "mixed";
-
-export type SyntaxProfile = SyntaxProfile_Serialize | SyntaxProfile_Deserialize;
-
-export type SyntaxProfile_Deserialize = {
-	language: SyntaxLanguage,
-	sentenceType: SentenceType,
-	tense?: SyntaxTense | null,
-	aspect?: SyntaxAspect | null,
-	voice?: SyntaxVoice | null,
-};
-
-export type SyntaxProfile_Serialize = {
-	language: SyntaxLanguage,
-	sentenceType: SentenceType,
-	tense?: SyntaxTense | null,
-	aspect?: SyntaxAspect | null,
-	voice?: SyntaxVoice | null,
+	gloss: string,
+	notes: string[],
 };
 
 /**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
 export type SyntaxProgressEvent = SyntaxProgressEvent_Serialize | SyntaxProgressEvent_Deserialize;
 
 /**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
-export type SyntaxProgressEvent_Deserialize = ({ kind: "started"; engine: string }) & { clause?: never; constituent?: never; profile?: never; reason?: never; text?: never } | ({ kind: "summary"; text: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never } | ({ kind: "profile"; profile: SyntaxProfile_Deserialize }) & { clause?: never; constituent?: never; engine?: never; reason?: never; text?: never } | ({ kind: "constituent"; constituent: SyntaxConstituent_Deserialize }) & { clause?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "clause"; clause: SyntaxClause_Deserialize }) & { constituent?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; text?: never } | ({ kind: "finished" }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never; text?: never };
+export type SyntaxProgressEvent_Deserialize = ({ kind: "started"; engine: string }) & { chunk?: never; reading?: never; reason?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "chunk"; chunk: SyntaxChunk_Deserialize }) & { engine?: never; reading?: never; reason?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "reading"; reading: SyntaxReading }) & { chunk?: never; engine?: never; reason?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "structure"; structure: SyntaxStructure_Deserialize }) & { chunk?: never; engine?: never; reading?: never; reason?: never; skeleton?: never; text?: never } | ({ kind: "skeleton"; skeleton: SyntaxSkeleton }) & { chunk?: never; engine?: never; reading?: never; reason?: never; structure?: never; text?: never } | ({ kind: "tip"; text: string }) & { chunk?: never; engine?: never; reading?: never; reason?: never; skeleton?: never; structure?: never } | ({ kind: "retrying"; reason: string }) & { chunk?: never; engine?: never; reading?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "finished" }) & { chunk?: never; engine?: never; reading?: never; reason?: never; skeleton?: never; structure?: never; text?: never };
 
 /**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
-export type SyntaxProgressEvent_Serialize = ({ kind: "started"; engine: string }) & { clause?: never; constituent?: never; profile?: never; reason?: never; text?: never } | ({ kind: "summary"; text: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never } | ({ kind: "profile"; profile: SyntaxProfile_Serialize }) & { clause?: never; constituent?: never; engine?: never; reason?: never; text?: never } | ({ kind: "constituent"; constituent: SyntaxConstituent_Serialize }) & { clause?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "clause"; clause: SyntaxClause_Serialize }) & { constituent?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; text?: never } | ({ kind: "finished" }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never; text?: never };
+export type SyntaxProgressEvent_Serialize = ({ kind: "started"; engine: string }) & { chunk?: never; reading?: never; reason?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "chunk"; chunk: SyntaxChunk_Serialize }) & { engine?: never; reading?: never; reason?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "reading"; reading: SyntaxReading }) & { chunk?: never; engine?: never; reason?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "structure"; structure: SyntaxStructure_Serialize }) & { chunk?: never; engine?: never; reading?: never; reason?: never; skeleton?: never; text?: never } | ({ kind: "skeleton"; skeleton: SyntaxSkeleton }) & { chunk?: never; engine?: never; reading?: never; reason?: never; structure?: never; text?: never } | ({ kind: "tip"; text: string }) & { chunk?: never; engine?: never; reading?: never; reason?: never; skeleton?: never; structure?: never } | ({ kind: "retrying"; reason: string }) & { chunk?: never; engine?: never; reading?: never; skeleton?: never; structure?: never; text?: never } | ({ kind: "finished" }) & { chunk?: never; engine?: never; reading?: never; reason?: never; skeleton?: never; structure?: never; text?: never };
+
+/**  整句的一种中文说法。 */
+export type SyntaxReading = {
+	text: string,
+	tone: ReadingTone,
+};
 
 /**  句法请求：默认且只允许 `llm`。 */
 export type SyntaxRequest = SyntaxRequest_Serialize | SyntaxRequest_Deserialize;
@@ -786,26 +747,53 @@ export type SyntaxResult = SyntaxResult_Serialize | SyntaxResult_Deserialize;
 export type SyntaxResult_Deserialize = {
 	engine: string,
 	input: string,
-	summary: string,
-	profile: SyntaxProfile_Deserialize,
-	constituents: SyntaxConstituent_Deserialize[],
-	clauses: SyntaxClause_Deserialize[],
+	chunks: SyntaxChunk_Deserialize[],
+	readings: SyntaxReading[],
+	structures: SyntaxStructure_Deserialize[],
+	skeletons: SyntaxSkeleton[],
+	tips: string[],
 	durationMs: number,
 };
 
 export type SyntaxResult_Serialize = {
 	engine: string,
 	input: string,
-	summary: string,
-	profile: SyntaxProfile_Serialize,
-	constituents: SyntaxConstituent_Serialize[],
-	clauses: SyntaxClause_Serialize[],
+	chunks: SyntaxChunk_Serialize[],
+	readings: SyntaxReading[],
+	structures: SyntaxStructure_Serialize[],
+	skeletons: SyntaxSkeleton[],
+	tips: string[],
 	durationMs: number,
 };
 
-export type SyntaxTense = "present" | "past" | "future";
+/**  句型骨架。`text` 可以补上原文省略的词，例如 `(that)`。 */
+export type SyntaxSkeleton = {
+	role: ConstituentRole,
+	text: string,
+};
 
-export type SyntaxVoice = "active" | "passive";
+/**  语法结构。`text` 必须是原文子串；`note` 用来写省略、从句等补充。 */
+export type SyntaxStructure = SyntaxStructure_Serialize | SyntaxStructure_Deserialize;
+
+/**  语法结构。`text` 必须是原文子串；`note` 用来写省略、从句等补充。 */
+export type SyntaxStructure_Deserialize = {
+	offset?: number | null,
+	length?: number | null,
+	role: ConstituentRole,
+	text: string,
+	label: string,
+	note?: string | null,
+};
+
+/**  语法结构。`text` 必须是原文子串；`note` 用来写省略、从句等补充。 */
+export type SyntaxStructure_Serialize = {
+	offset?: number | null,
+	length?: number | null,
+	role: ConstituentRole,
+	text: string,
+	label: string,
+	note?: string | null,
+};
 
 export type TestProviderResult = {
 	ok: boolean,

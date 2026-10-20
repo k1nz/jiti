@@ -6,33 +6,32 @@ import { useSyntaxStore } from '../src/stores/syntax';
 function sampleResult(): SyntaxResult_Serialize {
   return {
     engine: 'LLM',
-    input: 'The book that I bought was expensive.',
-    summary: '含定语从句的过去时陈述句',
-    profile: {
-      language: 'en',
-      sentenceType: 'declarative',
-      tense: 'past',
-      aspect: 'simple',
-      voice: 'active',
-    },
-    constituents: [
+    input: 'and everything it ships targets Apple',
+    chunks: [
       {
-        offset: 0,
+        offset: 15,
         length: 8,
-        role: 'subject',
-        text: 'The book',
-        note: '主语',
+        text: 'it ships',
+        gloss: '它发布的所有东西',
+        notes: ['ship 在科技语境里常指发布、出货'],
       },
     ],
-    clauses: [
+    readings: [
+      { text: '并且它发布的所有产品都是针对苹果的。', tone: 'literal' },
+      { text: '而且它推出的所有东西，都是冲着苹果来的。', tone: 'natural' },
+    ],
+    structures: [
       {
-        offset: 9,
-        length: 13,
-        kind: 'relative',
-        text: 'that I bought',
-        note: '修饰 book',
+        offset: 4,
+        length: 19,
+        role: 'subject',
+        text: 'everything it ships',
+        label: '名词性短语，作主语',
+        note: '省略了 that',
       },
     ],
+    skeletons: [{ role: 'subject', text: 'everything (that) it ships' }],
+    tips: ['关系代词 that 被省略了。'],
     durationMs: 12,
   };
 }
@@ -42,52 +41,40 @@ describe('syntax store', () => {
     setActivePinia(createPinia());
   });
 
-  it('从 idle 进入 loading，再随语义事件变成 streaming 并累加卡片', () => {
+  it('按模块顺序累加拆解、整句、结构和要点', () => {
     const store = useSyntaxStore();
     const id = store.begin();
     expect(store.status).toBe('loading');
+    const sample = sampleResult();
     store.applyProgress(id, { kind: 'started', engine: 'LLM' });
-    store.applyProgress(id, { kind: 'summary', text: '含定语从句的过去时陈述句' });
+    store.applyProgress(id, { kind: 'chunk', chunk: sample.chunks[0] });
     expect(store.status).toBe('streaming');
-    expect(store.summary).toBe('含定语从句的过去时陈述句');
-    store.applyProgress(id, {
-      kind: 'profile',
-      profile: {
-        language: 'en',
-        sentenceType: 'declarative',
-        tense: 'past',
-        aspect: 'simple',
-        voice: 'active',
-      },
-    });
-    store.applyProgress(id, {
-      kind: 'constituent',
-      constituent: sampleResult().constituents[0],
-    });
-    store.applyProgress(id, { kind: 'clause', clause: sampleResult().clauses[0] });
-    expect(store.constituents).toHaveLength(1);
-    expect(store.clauses).toHaveLength(1);
+    store.applyProgress(id, { kind: 'reading', reading: sample.readings[0] });
+    store.applyProgress(id, { kind: 'reading', reading: sample.readings[1] });
+    store.applyProgress(id, { kind: 'structure', structure: sample.structures[0] });
+    store.applyProgress(id, { kind: 'skeleton', skeleton: sample.skeletons[0] });
+    store.applyProgress(id, { kind: 'tip', text: sample.tips[0] });
+    expect(store.chunks).toHaveLength(1);
+    expect(store.readings.map((item) => item.tone)).toEqual(['literal', 'natural']);
+    expect(store.tips).toEqual(['关系代词 that 被省略了。']);
     store.applyProgress(id, { kind: 'finished' });
-    store.finish(id, sampleResult());
+    store.finish(id, sample);
     expect(store.status).toBe('done');
-    expect(store.profile?.tense).toBe('past');
     expect(store.result?.durationMs).toBe(12);
   });
 
-  it('retrying 会清空总评、句型和卡片', () => {
+  it('retrying 会清空已经出现的模块', () => {
     const store = useSyntaxStore();
     const id = store.begin();
-    store.applyProgress(id, { kind: 'summary', text: '旧总评' });
-    store.applyProgress(id, {
-      kind: 'constituent',
-      constituent: sampleResult().constituents[0],
-    });
+    store.applyProgress(id, { kind: 'chunk', chunk: sampleResult().chunks[0] });
+    store.applyProgress(id, { kind: 'tip', text: '旧要点' });
     store.applyProgress(id, { kind: 'retrying', reason: '正在重新解析' });
     expect(store.retrying).toBe(true);
-    expect(store.summary).toBeNull();
-    expect(store.profile).toBeNull();
-    expect(store.constituents).toEqual([]);
-    expect(store.clauses).toEqual([]);
+    expect(store.chunks).toEqual([]);
+    expect(store.readings).toEqual([]);
+    expect(store.structures).toEqual([]);
+    expect(store.skeletons).toEqual([]);
+    expect(store.tips).toEqual([]);
     expect(store.status).toBe('loading');
   });
 
@@ -95,8 +82,8 @@ describe('syntax store', () => {
     const store = useSyntaxStore();
     const stale = store.begin();
     const live = store.begin();
-    store.applyProgress(stale, { kind: 'summary', text: '过期' });
-    expect(store.summary).toBeNull();
+    store.applyProgress(stale, { kind: 'reading', reading: sampleResult().readings[0] });
+    expect(store.readings).toEqual([]);
     store.fail(stale, {
       provider: 'LLM',
       code: 'network',
@@ -107,27 +94,25 @@ describe('syntax store', () => {
     expect(store.status).toBe('loading');
     store.finish(live, sampleResult());
     expect(store.status).toBe('done');
-    expect(store.summary).toBe('含定语从句的过去时陈述句');
+    expect(store.readings[0]?.text).toBe('并且它发布的所有产品都是针对苹果的。');
   });
 
-  it('中文句型可以没有时态和语态', () => {
+  it('简单句可以没有句型骨架和理解要点', () => {
     const store = useSyntaxStore();
     const id = store.begin();
     store.finish(id, {
       engine: 'LLM',
       input: '我昨天买的书很贵。',
-      summary: '带定语的陈述句',
-      profile: {
-        language: 'zh',
-        sentenceType: 'declarative',
-      },
-      constituents: [],
-      clauses: [],
+      chunks: [{ text: '书', gloss: '书', notes: [] }],
+      readings: [{ text: '我昨天买的书很贵。', tone: 'literal' }],
+      structures: [{ role: 'subject', text: '书', label: '主语' }],
+      skeletons: [],
+      tips: [],
       durationMs: 8,
     });
-    expect(store.profile?.language).toBe('zh');
-    expect(store.profile?.tense).toBeUndefined();
-    expect(store.profile?.voice).toBeUndefined();
+    expect(store.skeletons).toEqual([]);
+    expect(store.tips).toEqual([]);
+    expect(store.structures[0]?.note).toBeUndefined();
     expect(store.status).toBe('done');
   });
 });

@@ -58,35 +58,15 @@
     "action": "分析",
     "analyzing": "正在分析",
     "retrying": "正在重新解析",
-    "hint": "输入中文或英文句子，分析句型、时态、成分和从句",
-    "constituents": "句子成分",
-    "clauses": "从句",
-    "language": {
-      "zh": "中文",
-      "en": "英语",
-      "mixed": "中英混合"
-    },
-    "sentence": {
-      "declarative": "陈述句",
-      "interrogative": "疑问句",
-      "imperative": "祈使句",
-      "exclamatory": "感叹句",
-      "fragment": "片段"
-    },
-    "tense": {
-      "present": "现在",
-      "past": "过去",
-      "future": "将来"
-    },
-    "aspect": {
-      "simple": "一般",
-      "progressive": "进行",
-      "perfect": "完成",
-      "perfect_progressive": "完成进行"
-    },
-    "voice": {
-      "active": "主动",
-      "passive": "被动"
+    "hint": "输入中文或英文句子，先拆开理解，再看整句意思和结构",
+    "chunks": "拆开理解",
+    "readings": "整句意思",
+    "structure": "语法结构",
+    "skeleton": "句型",
+    "tips": "理解要点",
+    "tone": {
+      "literal": "直译",
+      "natural": "更自然"
     },
     "role": {
       "subject": "主语",
@@ -95,14 +75,6 @@
       "attribute": "定语",
       "adverbial": "状语",
       "complement": "补语",
-      "other": "其他"
-    },
-    "clause": {
-      "main": "主句",
-      "relative": "定语从句",
-      "noun": "名词性从句",
-      "adverbial": "状语从句",
-      "coordinate": "并列",
       "other": "其他"
     }
   },

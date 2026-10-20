@@ -58,35 +58,15 @@
     "action": "Analyze",
     "analyzing": "Analyzing",
     "retrying": "Reparsing",
-    "hint": "Type a Chinese or English sentence to see its structure, tense, constituents, and clauses",
-    "constituents": "Constituents",
-    "clauses": "Clauses",
-    "language": {
-      "zh": "Chinese",
-      "en": "English",
-      "mixed": "Mixed"
-    },
-    "sentence": {
-      "declarative": "Declarative",
-      "interrogative": "Interrogative",
-      "imperative": "Imperative",
-      "exclamatory": "Exclamatory",
-      "fragment": "Fragment"
-    },
-    "tense": {
-      "present": "Present",
-      "past": "Past",
-      "future": "Future"
-    },
-    "aspect": {
-      "simple": "Simple",
-      "progressive": "Progressive",
-      "perfect": "Perfect",
-      "perfect_progressive": "Perfect progressive"
-    },
-    "voice": {
-      "active": "Active",
-      "passive": "Passive"
+    "hint": "Type a Chinese or English sentence to see how it breaks apart, what it means, and how it is built",
+    "chunks": "Piece by piece",
+    "readings": "Whole sentence",
+    "structure": "Grammar",
+    "skeleton": "Pattern",
+    "tips": "Watch for",
+    "tone": {
+      "literal": "Literal",
+      "natural": "More natural"
     },
     "role": {
       "subject": "Subject",
@@ -95,14 +75,6 @@
       "attribute": "Attribute",
       "adverbial": "Adverbial",
       "complement": "Complement",
-      "other": "Other"
-    },
-    "clause": {
-      "main": "Main clause",
-      "relative": "Relative clause",
-      "noun": "Noun clause",
-      "adverbial": "Adverbial clause",
-      "coordinate": "Coordinate",
       "other": "Other"
     }
   },

@@ -97,9 +97,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 /// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` / `translate://enriched` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 14 为多引擎并行翻译。
+/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 15 把句法结果改成讲解模块。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 14;
+pub const SCHEMA_VERSION: u32 = 15;
 
 #[cfg(test)]
 mod tests {

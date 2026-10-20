@@ -465,7 +465,7 @@ function saveGrammarClip(text: string) {
 }
 
 function saveSyntaxClip(text: string) {
-  void saveClip(text, syntax.summary);
+  void saveClip(text, syntax.readings[0]?.text);
 }
 
 const inputClipped = computed(() => {
@@ -499,7 +499,7 @@ const grammarClipped = computed(() =>
 );
 
 const syntaxClipped = computed(() =>
-  isClipMatch(clipNorms.value, store.input, syntax.summary),
+  isClipMatch(clipNorms.value, store.input, syntax.readings[0]?.text),
 );
 
 async function reloadHistory() {

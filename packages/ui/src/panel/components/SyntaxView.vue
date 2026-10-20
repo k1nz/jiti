@@ -2,7 +2,6 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconBinaryTree, IconPlayerPlay } from '@tabler/icons-vue';
-import type { SyntaxProfile } from '../../ipc/bindings';
 import { useSyntaxStore } from '../../stores/syntax';
 import ClipBookmark from './ClipBookmark.vue';
 
@@ -31,20 +30,6 @@ const statusLabel = computed(() => {
   if (busy.value) return t('syntax.analyzing');
   return '';
 });
-
-const chips = computed(() => chipsFor(syntax.profile));
-
-function chipsFor(profile: SyntaxProfile | null): string[] {
-  if (!profile) return [];
-  const items = [
-    t(`syntax.language.${profile.language}`),
-    t(`syntax.sentence.${profile.sentenceType}`),
-  ];
-  if (profile.tense) items.push(t(`syntax.tense.${profile.tense}`));
-  if (profile.aspect) items.push(t(`syntax.aspect.${profile.aspect}`));
-  if (profile.voice) items.push(t(`syntax.voice.${profile.voice}`));
-  return items;
-}
 </script>
 
 <template>
@@ -80,35 +65,70 @@ function chipsFor(profile: SyntaxProfile | null): string[] {
       <code class="copyable">{{ syntax.error.copyable }}</code>
     </div>
 
-    <div v-else-if="showResults" class="grammar-results" data-tauri-drag-region="false" aria-live="polite">
-      <p v-if="syntax.summary" class="grammar-overall">{{ syntax.summary }}</p>
-      <ul v-if="chips.length" class="syntax-chips">
-        <li v-for="chip in chips" :key="chip" class="syntax-chip">{{ chip }}</li>
-      </ul>
-      <template v-if="syntax.constituents.length">
-        <h3 class="syntax-heading">{{ t('syntax.constituents') }}</h3>
+    <div v-else-if="showResults" class="syntax-modules" data-tauri-drag-region="false" aria-live="polite">
+      <section v-if="syntax.chunks.length" class="syntax-module">
+        <h3 class="syntax-heading">{{ t('syntax.chunks') }}</h3>
+        <ul class="syntax-chunks">
+          <li v-for="(item, index) in syntax.chunks" :key="`chunk-${index}`" class="syntax-chunk">
+            <p class="syntax-chunk-line">
+              <span class="syntax-quote">{{ item.text }}</span>
+              <span class="syntax-gloss">{{ item.gloss }}</span>
+            </p>
+            <ul v-if="item.notes.length" class="syntax-notes">
+              <li v-for="(note, noteIndex) in item.notes" :key="`note-${index}-${noteIndex}`">
+                {{ note }}
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="syntax.readings.length" class="syntax-module">
+        <h3 class="syntax-heading">{{ t('syntax.readings') }}</h3>
+        <ol class="syntax-readings">
+          <li
+            v-for="(item, index) in syntax.readings"
+            :key="`reading-${index}`"
+            class="syntax-reading"
+            :class="{ natural: item.tone === 'natural' }"
+          >
+            <span class="syntax-tone">{{ t(`syntax.tone.${item.tone}`) }}</span>
+            <p>{{ item.text }}</p>
+          </li>
+        </ol>
+      </section>
+
+      <section v-if="syntax.structures.length" class="syntax-module">
+        <h3 class="syntax-heading">{{ t('syntax.structure') }}</h3>
         <ul class="grammar-cards">
-          <li v-for="(item, index) in syntax.constituents" :key="`c-${item.role}-${index}`">
+          <li v-for="(item, index) in syntax.structures" :key="`structure-${index}`">
             <article class="grammar-card">
               <span class="grammar-card-type">{{ t(`syntax.role.${item.role}`) }}</span>
               <p class="syntax-span">{{ item.text }}</p>
-              <p class="grammar-explain">{{ item.note }}</p>
+              <p class="syntax-label">{{ item.label }}</p>
+              <p v-if="item.note" class="grammar-explain">{{ item.note }}</p>
             </article>
           </li>
         </ul>
-      </template>
-      <template v-if="syntax.clauses.length">
-        <h3 class="syntax-heading">{{ t('syntax.clauses') }}</h3>
-        <ul class="grammar-cards">
-          <li v-for="(item, index) in syntax.clauses" :key="`k-${item.kind}-${index}`">
-            <article class="grammar-card">
-              <span class="grammar-card-type">{{ t(`syntax.clause.${item.kind}`) }}</span>
-              <p class="syntax-span">{{ item.text }}</p>
-              <p class="grammar-explain">{{ item.note }}</p>
-            </article>
+      </section>
+
+      <section v-if="syntax.skeletons.length" class="syntax-module">
+        <h3 class="syntax-heading">{{ t('syntax.skeleton') }}</h3>
+        <ol class="syntax-skeleton">
+          <li v-for="(item, index) in syntax.skeletons" :key="`skeleton-${index}`">
+            <span class="syntax-skeleton-role">{{ t(`syntax.role.${item.role}`) }}</span>
+            <span class="syntax-skeleton-text">{{ item.text }}</span>
           </li>
-        </ul>
-      </template>
+        </ol>
+      </section>
+
+      <section v-if="syntax.tips.length" class="syntax-module">
+        <h3 class="syntax-heading">{{ t('syntax.tips') }}</h3>
+        <ol class="syntax-tips">
+          <li v-for="(tip, index) in syntax.tips" :key="`tip-${index}`">{{ tip }}</li>
+        </ol>
+      </section>
+
       <div v-if="syntax.result" class="meta">
         <span>{{ syntax.result.engine }}</span>
         <span>{{ syntax.result.durationMs }} ms</span>
