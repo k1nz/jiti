@@ -25,6 +25,7 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::commands::providers::providers_snapshot,
             crate::commands::providers::providers_save,
             crate::commands::providers::provider_save_api_key,
+            crate::commands::providers::provider_save_api_secret,
             crate::commands::providers::provider_test,
             crate::commands::history::history_list,
             crate::commands::history::history_clear,
@@ -95,9 +96,9 @@ pub fn export(builder: &SpectaBuilder<TauriRuntime>) {
 /// M1 的 `engine://error` / `hotkey://pressed` / `capture://changed` / `translate://enriched` 已纳入 specta 单源事件；
 /// M0 的 `panel://visibility` 保持普通 emit/listen 契约。
 ///
-/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 13 为收藏与复习课独立窗。
+/// §3.5 要求的版本化常量：破坏性变更必升。SCHEMA 14 为多引擎并行翻译。
 #[allow(dead_code)]
-pub const SCHEMA_VERSION: u32 = 13;
+pub const SCHEMA_VERSION: u32 = 14;
 
 #[cfg(test)]
 mod tests {

@@ -304,6 +304,7 @@ providers:
   deepl:     { apiKey?(keys.json), formality }
   youdao:    { appKey?(keys.json), appSecret?(keys.json) }
   google:    { apiKey?(keys.json) }
+  bing:      { apiKey?(keys.json), region? }
   languagetool: { mode: 'off'|'local'|'online', localPort? }
 defaults:
   translate: deepl  (fallback: llm)
@@ -321,10 +322,11 @@ defaults:
 | DeepL | `auth_key` header | 免费档有限额；质量好 |
 | 有道智云 | appKey+appSecret 签名 | 国内直连最稳，有免费额度 |
 | Google Cloud Translation | apiKey | 按量收费；需可达网络 |
+| Bing 翻译 | Microsoft Translator 订阅密钥，区域可选 | 与有道、Google 可同时启用，面板并列展示 |
 | Baidu | appKey/appSecret | 备选 |
 | LLM | OpenAI 兼容协议 | 「高级翻译」fallback / 可选；质量最高、慢且贵 |
 
-统一进出参：`TranslateRequest{text, from?, to}` → `TranslateResult{output, detectedFrom, engine, durationMs}`。
+统一进出参：`TranslateRequest{text, from?, to}` → `TranslateOutcome{results[]}`。已启用的翻译引擎并行请求，默认引擎排在最前。
 
 ### 5.3 语法检查适配器
 - **LLM（M2 主力）**：单次 chat/completions。`stream=true` 走 SSE；业务协议是 NDJSON 行（`overall` → `correctedText` → `error*` → `done`），不是自然语言打字机，也不是二次 JSON 请求。模型只返回原文片段；Rust 仅在片段唯一匹配时写入 Unicode 字符偏移。温度固定接近 0。解析失败（缺行 / 非法枚举 / 无 `done`）清空临时结果并**只重试一次**非流式严格 JSON。

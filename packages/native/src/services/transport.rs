@@ -57,6 +57,13 @@ pub trait Transport: Send + Sync {
         url: &str,
         headers: &[(&str, &str)],
     ) -> Result<Response, reqwest::Error>;
+
+    async fn post_bytes(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        body: Vec<u8>,
+    ) -> Result<Response, reqwest::Error>;
 }
 
 #[derive(Clone)]
@@ -120,6 +127,19 @@ impl Transport for ReqwestTransport {
         headers: &[(&str, &str)],
     ) -> Result<Response, reqwest::Error> {
         let mut request = self.client.get(url).timeout(TRANSLATE_TIMEOUT);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        request.send().await
+    }
+
+    async fn post_bytes(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        body: Vec<u8>,
+    ) -> Result<Response, reqwest::Error> {
+        let mut request = self.client.post(url).timeout(TRANSLATE_TIMEOUT).body(body);
         for (name, value) in headers {
             request = request.header(*name, *value);
         }

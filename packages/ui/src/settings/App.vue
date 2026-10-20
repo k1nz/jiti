@@ -90,6 +90,7 @@ const hotkeys = ref<HotkeysSnapshot | null>(null);
 const permissions = ref<PermissionsSnapshot | null>(null);
 const prefs = ref<PreferencesSnapshot | null>(null);
 const keyInputs = ref<Record<string, string>>({});
+const secretInputs = ref<Record<string, string>>({});
 const testResults = ref<Record<string, TestProviderResult | null>>({});
 const testing = ref<Record<string, boolean>>({});
 const saveError = ref<EngineErrorPayload | null>(null);
@@ -115,6 +116,7 @@ function viewToConfig(view: ProviderView): ProviderConfig_Serialize {
     temperature: view.temperature,
     maxTokens: view.maxTokens,
     formality: view.formality,
+    region: view.region,
   };
 }
 
@@ -126,18 +128,22 @@ function buildConfig(): ProvidersConfig_Serialize {
     label: id,
     enabled: false,
     hasKey: false,
+    hasSecret: false,
     kind: null,
     baseUrl: null,
     model: null,
     temperature: null,
     maxTokens: null,
     formality: null,
-    testable: id !== 'youdao',
+    region: null,
+    testable: true,
   });
   return {
     deepl: config('deepl'),
     llm: config('llm'),
     youdao: config('youdao'),
+    google: config('google'),
+    bing: config('bing'),
     defaultTranslate: snapshot.defaultTranslate,
     writeHistory: snapshot.writeHistory,
   };
@@ -260,13 +266,33 @@ function onToggleProvider(id: string, event: Event) {
   void saveSettings();
 }
 
-function onProviderField(id: string, field: 'baseUrl' | 'model', event: Event) {
+function onProviderField(id: string, field: 'baseUrl' | 'model' | 'region', event: Event) {
   const view = providerView(id);
   if (!view) return;
-  const value = (event.target as HTMLInputElement).value;
-  if (field === 'baseUrl') view.baseUrl = value;
-  else view.model = value;
+  const value = (event.target as HTMLInputElement).value.trim();
+  if (field === 'baseUrl') view.baseUrl = value || null;
+  else if (field === 'model') view.model = value || null;
+  else view.region = value || null;
   void saveSettings();
+}
+
+function credentialsReady(provider: ProviderView) {
+  if (provider.id === 'youdao') return provider.hasKey && provider.hasSecret;
+  return provider.hasKey;
+}
+
+function credentialsLabel(provider: ProviderView) {
+  if (provider.id === 'youdao' && provider.hasKey !== provider.hasSecret) {
+    return t('settings.credentialsPartial');
+  }
+  return credentialsReady(provider) ? t('translate.keyOn') : t('translate.keyOff');
+}
+
+function providerHint(id: string) {
+  if (id === 'youdao') return t('settings.youdaoHint');
+  if (id === 'google') return t('settings.googleHint');
+  if (id === 'bing') return t('settings.bingHint');
+  return '';
 }
 
 function onDefaultChange(event: Event) {
@@ -313,6 +339,13 @@ async function saveKey(id: string) {
   const key = (keyInputs.value[id] ?? '').trim();
   await unwrap(commands.providerSaveApiKey(id, key));
   keyInputs.value[id] = '';
+  await loadAll();
+}
+
+async function saveSecret(id: string) {
+  const secret = (secretInputs.value[id] ?? '').trim();
+  await unwrap(commands.providerSaveApiSecret(id, secret));
+  secretInputs.value[id] = '';
   await loadAll();
 }
 
@@ -740,18 +773,19 @@ onBeforeUnmount(() => {
               </label>
             </div>
           </div>
+          <p class="settings-footnote">{{ t('settings.multiHint') }}</p>
           <p class="settings-footnote">{{ t('settings.keyNote') }}</p>
         </section>
 
         <template v-for="provider in settings?.providers ?? []" :key="provider.id">
         <section
-          v-if="matchesQuery(provider.label, t('settings.baseUrl'), t('settings.model'), t('settings.apiKey'), t('settings.enabled'), t('settings.disabled'))"
+          v-if="matchesQuery(provider.label, providerHint(provider.id), t('settings.baseUrl'), t('settings.model'), t('settings.apiKey'), t('settings.appKey'), t('settings.appSecret'), t('settings.region'), t('settings.enabled'), t('settings.disabled'))"
           class="settings-group"
         >
           <div class="settings-group-head">
             <h2>{{ provider.label }}</h2>
-            <span class="badge" :class="{ on: provider.hasKey }">
-              {{ provider.hasKey ? t('translate.keyOn') : t('translate.keyOff') }}
+            <span class="badge" :class="{ on: credentialsReady(provider) }">
+              {{ credentialsLabel(provider) }}
             </span>
           </div>
           <div class="settings-list">
@@ -794,22 +828,55 @@ onBeforeUnmount(() => {
                 @change="onProviderField(provider.id, 'model', $event)"
               />
             </div>
+            <div v-if="provider.id === 'bing'" class="settings-item stack">
+              <div class="settings-item-copy">
+                <span>{{ t('settings.region') }}</span>
+                <p>{{ t('settings.regionHint') }}</p>
+              </div>
+              <input
+                class="text-input"
+                type="text"
+                :value="provider.region ?? ''"
+                :placeholder="t('settings.regionPlaceholder')"
+                spellcheck="false"
+                @change="onProviderField(provider.id, 'region', $event)"
+              />
+            </div>
             <div class="settings-item stack">
               <div class="settings-item-copy">
-                <span>{{ t('settings.apiKey') }}</span>
+                <span>{{ provider.id === 'youdao' ? t('settings.appKey') : t('settings.apiKey') }}</span>
               </div>
               <div class="settings-item-actions">
                 <input
                   class="text-input mono"
                   type="password"
                   v-model="keyInputs[provider.id]"
-                  :placeholder="t('settings.apiKey')"
+                  :placeholder="provider.id === 'youdao' ? t('settings.appKey') : t('settings.apiKey')"
                   autocomplete="off"
                   spellcheck="false"
                   @keydown.enter="saveKey(provider.id)"
                 />
                 <button class="action" type="button" @click="saveKey(provider.id)">
                   {{ t('settings.saveKey') }}
+                </button>
+              </div>
+            </div>
+            <div v-if="provider.id === 'youdao'" class="settings-item stack">
+              <div class="settings-item-copy">
+                <span>{{ t('settings.appSecret') }}</span>
+              </div>
+              <div class="settings-item-actions">
+                <input
+                  class="text-input mono"
+                  type="password"
+                  v-model="secretInputs[provider.id]"
+                  :placeholder="t('settings.appSecret')"
+                  autocomplete="off"
+                  spellcheck="false"
+                  @keydown.enter="saveSecret(provider.id)"
+                />
+                <button class="action" type="button" @click="saveSecret(provider.id)">
+                  {{ t('settings.saveSecret') }}
                 </button>
               </div>
             </div>
@@ -837,6 +904,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
+          <p v-if="providerHint(provider.id)" class="settings-footnote">{{ providerHint(provider.id) }}</p>
         </section>
         </template>
       </template>

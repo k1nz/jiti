@@ -49,6 +49,21 @@ pub fn provider_save_api_key(
 
 #[tauri::command]
 #[specta::specta]
+pub fn provider_save_api_secret(
+    app: AppHandle,
+    provider: String,
+    api_secret: String,
+) -> Result<ProvidersSnapshot, String> {
+    if api_secret.trim().is_empty() {
+        secrets::delete_app_secret(&app, &provider);
+    } else {
+        secrets::set_app_secret(&app, &provider, &api_secret)?;
+    }
+    snapshot(&app)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn provider_test(app: AppHandle, provider: String) -> Result<TestProviderResult, String> {
     let config = match settings::load_provider_config(&app) {
         Ok(config) => config,
@@ -82,9 +97,42 @@ pub async fn provider_test(app: AppHandle, provider: String) -> Result<TestProvi
             )
             .await
         }
+        "youdao" => {
+            let secret = match secrets::get_app_secret(&app, "youdao") {
+                Ok(secret) => secret,
+                Err(_) => {
+                    return Ok(test_fail(
+                        "未配置有道应用密钥；请在设置里录入应用 ID 和应用密钥后重试",
+                    ))
+                }
+            };
+            crate::providers::youdao::test_connection(
+                config_for(&config, &provider),
+                &api_key,
+                &secret,
+                &transport,
+            )
+            .await
+        }
+        "google" => {
+            crate::providers::google::test_connection(
+                config_for(&config, &provider),
+                &api_key,
+                &transport,
+            )
+            .await
+        }
+        "bing" => {
+            crate::providers::bing::test_connection(
+                config_for(&config, &provider),
+                &api_key,
+                &transport,
+            )
+            .await
+        }
         _ => Err(crate::providers::EngineError::InvalidConfig {
             provider: label.into(),
-            detail: "该 Provider 在 M1 无法测试".into(),
+            detail: "该 Provider 无法测试".into(),
         }),
     };
 

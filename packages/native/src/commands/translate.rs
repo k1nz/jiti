@@ -3,7 +3,7 @@
 use tauri::AppHandle;
 
 use crate::providers::{
-    run_translate, EngineError, EngineErrorPayload, TranslateRequest, TranslateResult,
+    run_translate, EngineError, EngineErrorPayload, TranslateOutcome, TranslateRequest,
 };
 use crate::services::history::{self, NewHistoryEntry};
 
@@ -12,7 +12,7 @@ use crate::services::history::{self, NewHistoryEntry};
 pub async fn translate(
     app: AppHandle,
     request: TranslateRequest,
-) -> Result<TranslateResult, EngineErrorPayload> {
+) -> Result<TranslateOutcome, EngineErrorPayload> {
     if request.text.trim().is_empty() {
         let err = EngineError::BadRequest {
             provider: "translate".into(),
@@ -36,20 +36,24 @@ pub async fn translate(
                 .map(|c| c.write_history)
                 .unwrap_or(true);
             if should_write {
-                let _ = history::record(
-                    &app,
-                    NewHistoryEntry {
-                        kind: "translate".into(),
-                        input: result.input.clone(),
-                        output: result.output.clone(),
-                        engine: result.engine.clone(),
-                        from_lang: request.from,
-                        to_lang: Some(request.to),
-                        duration_ms: result.duration_ms as i64,
-                        source_app: None,
-                        meta: None,
-                    },
-                );
+                if let Some(hit) = result.results.iter().find(|hit| {
+                    result.preferred_id.as_deref() == Some(hit.id.as_str()) && hit.error.is_none()
+                }) {
+                    let _ = history::record(
+                        &app,
+                        NewHistoryEntry {
+                            kind: "translate".into(),
+                            input: result.input.clone(),
+                            output: hit.output.clone(),
+                            engine: hit.engine.clone(),
+                            from_lang: hit.detected_from.clone().or(request.from),
+                            to_lang: Some(hit.target.clone()),
+                            duration_ms: hit.duration_ms as i64,
+                            source_app: None,
+                            meta: None,
+                        },
+                    );
+                }
             }
             Ok(result)
         }

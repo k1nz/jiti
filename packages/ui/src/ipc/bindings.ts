@@ -15,11 +15,12 @@ export const commands = {
 	settingsGet: (key: string) => typedError<"Null" | boolean | number | null | string | SettingsValue[] | ([string, SettingsValue])[] | null, string>(__TAURI_INVOKE("settings_get", { key })),
 	settingsSet: (key: string, value: SettingsValue) => typedError<null, string>(__TAURI_INVOKE("settings_set", { key, value })),
 	getSelectedText: () => __TAURI_INVOKE<SelectedText>("get_selected_text"),
-	translate: (request: TranslateRequest_Deserialize) => typedError<TranslateResult_Serialize, EngineErrorPayload>(__TAURI_INVOKE("translate", { request })),
+	translate: (request: TranslateRequest_Deserialize) => typedError<TranslateOutcome_Serialize, EngineErrorPayload>(__TAURI_INVOKE("translate", { request })),
 	grammarCheck: (request: GrammarRequest_Deserialize, onProgress: Channel<GrammarProgressEvent_Deserialize>) => typedError<GrammarCheckOutcome_Serialize, EngineErrorPayload>(__TAURI_INVOKE("grammar_check", { request, onProgress })),
 	providersSnapshot: () => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_snapshot")),
 	providersSave: (config: ProvidersConfig_Deserialize) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_save", { config })),
 	providerSaveApiKey: (provider: string, apiKey: string) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("provider_save_api_key", { provider, apiKey })),
+	providerSaveApiSecret: (provider: string, apiSecret: string) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("provider_save_api_secret", { provider, apiSecret })),
 	providerTest: (provider: string) => typedError<TestProviderResult, string>(__TAURI_INVOKE("provider_test", { provider })),
 	historyList: () => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_list")),
 	historyClear: () => typedError<number, string>(__TAURI_INVOKE("history_clear")),
@@ -175,6 +176,31 @@ export type EngineErrorPayload = {
 	message: string,
 	hint: string | null,
 	copyable: string,
+};
+
+/**  单个引擎的译文或错误。失败时 `output` 为空，`error` 有值。 */
+export type EngineTranslation = EngineTranslation_Serialize | EngineTranslation_Deserialize;
+
+/**  单个引擎的译文或错误。失败时 `output` 为空，`error` 有值。 */
+export type EngineTranslation_Deserialize = {
+	id: string,
+	engine: string,
+	output: string,
+	detectedFrom?: string | null,
+	target: string,
+	durationMs: number,
+	error?: EngineErrorPayload | null,
+};
+
+/**  单个引擎的译文或错误。失败时 `output` 为空，`error` 有值。 */
+export type EngineTranslation_Serialize = {
+	id: string,
+	engine: string,
+	output: string,
+	detectedFrom?: string | null,
+	target: string,
+	durationMs: number,
+	error?: EngineErrorPayload | null,
 };
 
 export type EnglishEnrichment = EnglishEnrichment_Serialize | EnglishEnrichment_Deserialize;
@@ -519,6 +545,8 @@ export type ProviderConfig_Deserialize = {
 	temperature?: number | null,
 	maxTokens?: number | null,
 	formality?: string | null,
+	/**  Bing / Azure Translator 资源区域，例如 `eastasia`。空则不发送区域头。 */
+	region?: string | null,
 };
 
 /**  非密钥的 Provider 配置（settings.json，§6.2：密钥在 keys.json 里）。 */
@@ -530,6 +558,8 @@ export type ProviderConfig_Serialize = {
 	temperature?: number | null,
 	maxTokens?: number | null,
 	formality?: string | null,
+	/**  Bing / Azure Translator 资源区域，例如 `eastasia`。空则不发送区域头。 */
+	region?: string | null,
 };
 
 /**  WebView 可见的 Provider 状态（D2：任何时候都不含密钥明文）。 */
@@ -538,12 +568,14 @@ export type ProviderView = {
 	label: string,
 	enabled: boolean,
 	hasKey: boolean,
+	hasSecret: boolean,
 	kind: string | null,
 	baseUrl: string | null,
 	model: string | null,
 	temperature: number | null,
 	maxTokens: number | null,
 	formality: string | null,
+	region: string | null,
 	testable: boolean,
 };
 
@@ -555,6 +587,8 @@ export type ProvidersConfig_Deserialize = {
 	deepl?: ProviderConfig_Deserialize,
 	llm?: ProviderConfig_Deserialize,
 	youdao?: ProviderConfig_Deserialize,
+	google?: ProviderConfig_Deserialize,
+	bing?: ProviderConfig_Deserialize,
 	defaultTranslate?: string,
 	writeHistory?: boolean,
 };
@@ -564,6 +598,8 @@ export type ProvidersConfig_Serialize = {
 	deepl: ProviderConfig_Serialize,
 	llm: ProviderConfig_Serialize,
 	youdao: ProviderConfig_Serialize,
+	google: ProviderConfig_Serialize,
+	bing: ProviderConfig_Serialize,
 	defaultTranslate: string,
 	writeHistory: boolean,
 };
@@ -668,6 +704,29 @@ export type TranslateEnrichedEvent_Serialize = {
 	enrichment?: EnglishEnrichment_Serialize | null,
 };
 
+/**  一次翻译里所有已启用引擎的结果。词卡只挂在 `preferred_id` 那一条上。 */
+export type TranslateOutcome = TranslateOutcome_Serialize | TranslateOutcome_Deserialize;
+
+/**  一次翻译里所有已启用引擎的结果。词卡只挂在 `preferred_id` 那一条上。 */
+export type TranslateOutcome_Deserialize = {
+	input: string,
+	preferredId?: string | null,
+	results: EngineTranslation_Deserialize[],
+	enrichment?: EnglishEnrichment_Deserialize | null,
+	enrichmentWord?: string | null,
+	enrichmentPending?: boolean,
+};
+
+/**  一次翻译里所有已启用引擎的结果。词卡只挂在 `preferred_id` 那一条上。 */
+export type TranslateOutcome_Serialize = {
+	input: string,
+	preferredId?: string | null,
+	results: EngineTranslation_Serialize[],
+	enrichment?: EnglishEnrichment_Serialize | null,
+	enrichmentWord?: string | null,
+	enrichmentPending?: boolean,
+};
+
 /**  翻译请求：§5.2 统一进出参 `{text, from?, to}`。 */
 export type TranslateRequest = TranslateRequest_Serialize | TranslateRequest_Deserialize;
 
@@ -683,41 +742,6 @@ export type TranslateRequest_Serialize = {
 	text: string,
 	from?: string | null,
 	to: string,
-};
-
-/**  翻译结果：§5.4 标准化 Schema。 */
-export type TranslateResult = TranslateResult_Serialize | TranslateResult_Deserialize;
-
-/**  翻译结果：§5.4 标准化 Schema。 */
-export type TranslateResult_Deserialize = {
-	engine: string,
-	output: string,
-	input: string,
-	detectedFrom: string | null,
-	target: string,
-	durationMs: number,
-	/**  英语短词词卡；失败时省略，不影响译文。 */
-	enrichment?: EnglishEnrichment_Deserialize | null,
-	/**  词卡对应的英语单词；加载态即可显示。 */
-	enrichmentWord?: string | null,
-	/**  后台正在拉词卡；完成后经 `translate://enriched` 清除。 */
-	enrichmentPending?: boolean,
-};
-
-/**  翻译结果：§5.4 标准化 Schema。 */
-export type TranslateResult_Serialize = {
-	engine: string,
-	output: string,
-	input: string,
-	detectedFrom: string | null,
-	target: string,
-	durationMs: number,
-	/**  英语短词词卡；失败时省略，不影响译文。 */
-	enrichment?: EnglishEnrichment_Serialize | null,
-	/**  词卡对应的英语单词；加载态即可显示。 */
-	enrichmentWord?: string | null,
-	/**  后台正在拉词卡；完成后经 `translate://enriched` 清除。 */
-	enrichmentPending?: boolean,
 };
 
 export type UiLocale = "system" | "zh-CN" | "en-US";

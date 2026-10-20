@@ -13,6 +13,10 @@ fn entry_name(provider: &str) -> String {
     format!("{provider}_api_key")
 }
 
+fn secret_name(provider: &str) -> String {
+    format!("{provider}_app_secret")
+}
+
 fn extract_key(value: Option<Value>) -> Option<String> {
     match value {
         Some(Value::String(key)) if !key.trim().is_empty() => Some(key),
@@ -38,6 +42,29 @@ pub fn set_api_key(app: &AppHandle, provider: &str, api_key: &str) -> Result<(),
 pub fn delete_api_key(app: &AppHandle, provider: &str) {
     if let Ok(store) = app.store(STORE_FILE) {
         store.delete(entry_name(provider));
+        let _ = store.save();
+    }
+}
+
+pub fn get_app_secret(app: &AppHandle, provider: &str) -> Result<String, String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    extract_key(store.get(secret_name(provider)))
+        .ok_or_else(|| format!("未配置 {provider} 应用密钥"))
+}
+
+pub fn has_app_secret(app: &AppHandle, provider: &str) -> bool {
+    get_app_secret(app, provider).is_ok()
+}
+
+pub fn set_app_secret(app: &AppHandle, provider: &str, secret: &str) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(secret_name(provider), Value::String(secret.to_string()));
+    store.save().map_err(|e| format!("密钥写入失败：{e}"))
+}
+
+pub fn delete_app_secret(app: &AppHandle, provider: &str) {
+    if let Ok(store) = app.store(STORE_FILE) {
+        store.delete(secret_name(provider));
         let _ = store.save();
     }
 }

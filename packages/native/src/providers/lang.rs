@@ -32,6 +32,39 @@ pub fn resolve_source(from: Option<&str>, text: &str) -> Option<String> {
     guess_source(text).map(str::to_string)
 }
 
+/// 各引擎的中文代码不同：有道 `zh-CHS`、Google `zh-CN`、Bing `zh-Hans`。
+pub fn map_lang(code: &str, zh: &str) -> String {
+    let lower = code.trim().to_ascii_lowercase();
+    if lower.is_empty() || lower == "auto" {
+        return "auto".into();
+    }
+    if matches!(
+        lower.as_str(),
+        "zh" | "zh-cn" | "zh-hans" | "zh-chs" | "zh_cn" | "cht" | "chs"
+    ) {
+        return zh.to_string();
+    }
+    if lower == "en" || lower.starts_with("en-") || lower.starts_with("en_") {
+        return "en".into();
+    }
+    code.trim().to_string()
+}
+
+/// 把引擎返回的语言标签收成面板用的短码（`zh-Hans` → `zh`）。
+pub fn short_code(code: &str) -> String {
+    let token = code
+        .split(['-', '_'])
+        .next()
+        .unwrap_or(code)
+        .trim()
+        .to_ascii_lowercase();
+    match token.as_str() {
+        "zh" | "chs" | "cht" => "zh".into(),
+        "jp" => "ja".into(),
+        other => other.to_string(),
+    }
+}
+
 pub fn language_name(code: &str) -> String {
     match code.trim().to_ascii_lowercase().as_str() {
         "zh" | "zh-cn" | "zh-hans" | "zh_cn" => "Simplified Chinese".into(),
@@ -73,5 +106,15 @@ mod tests {
     fn zh_prompt_name_is_chinese_not_code() {
         assert_eq!(language_name("zh"), "Simplified Chinese");
         assert_eq!(language_name("en"), "English");
+    }
+
+    #[test]
+    fn engine_language_codes_stay_distinct() {
+        assert_eq!(map_lang("zh", "zh-CHS"), "zh-CHS");
+        assert_eq!(map_lang("ZH-CN", "zh-Hans"), "zh-Hans");
+        assert_eq!(map_lang("en-US", "zh-CN"), "en");
+        assert_eq!(map_lang("auto", "zh-CHS"), "auto");
+        assert_eq!(short_code("zh-Hans"), "zh");
+        assert_eq!(short_code("EN"), "en");
     }
 }

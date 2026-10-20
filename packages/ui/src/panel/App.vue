@@ -24,7 +24,8 @@ import type {
   ProvidersSnapshot,
   TranslateRequest_Deserialize,
   HotkeysSnapshot,
-  TranslateResult,
+  TranslateOutcome,
+  EngineTranslation,
   SelectedText,
   GrammarProgressEvent_Deserialize,
   GrammarRequest_Deserialize,
@@ -91,7 +92,7 @@ const userTargetOverride = ref(false);
 const translateStatus = ref<'idle' | 'loading' | 'done' | 'error'>('idle');
 const translateSpinner = ref(false);
 let translateSpinnerTimer: ReturnType<typeof setTimeout> | undefined;
-const translateResult = ref<TranslateResult | null>(null);
+const translateResult = ref<TranslateOutcome | null>(null);
 const translateError = ref<EngineErrorPayload | null>(null);
 const history = ref<HistoryEntry[]>([]);
 const settings = ref<ProvidersSnapshot | null>(null);
@@ -175,10 +176,24 @@ async function runTranslate(text = store.input) {
   }
 }
 
+function preferredOf(outcome: TranslateOutcome): EngineTranslation | null {
+  const rows = outcome.results;
+  if (outcome.preferredId) {
+    const hit = rows.find((row) => row.id === outcome.preferredId && row.output && !row.error);
+    if (hit) return hit;
+  }
+  return rows.find((row) => row.output && !row.error) ?? null;
+}
+
+const preferredTranslation = computed(() =>
+  translateResult.value ? preferredOf(translateResult.value) : null,
+);
+
 function applyTranslateEnrichment(payload: TranslateEnrichedEvent) {
   const current = translateResult.value;
-  if (!current) return;
-  if (current.input !== payload.input || current.output !== payload.output) return;
+  const preferred = current ? preferredOf(current) : null;
+  if (!current || !preferred) return;
+  if (current.input !== payload.input || preferred.output !== payload.output) return;
   translateResult.value = {
     ...current,
     enrichmentPending: false,
@@ -191,11 +206,11 @@ function applyTranslateEnrichment(payload: TranslateEnrichedEvent) {
   };
 }
 
-function enrichmentWord(result: TranslateResult) {
-  return result.enrichmentWord?.trim() || result.enrichment?.word?.trim() || result.output;
+function enrichmentWord(result: TranslateOutcome) {
+  return result.enrichmentWord?.trim() || result.enrichment?.word?.trim() || preferredOf(result)?.output || '';
 }
 
-function cardLoading(result: TranslateResult) {
+function cardLoading(result: TranslateOutcome) {
   return Boolean(result.enrichmentPending) && !result.enrichment;
 }
 
@@ -291,11 +306,7 @@ function onTargetChange() {
   userTargetOverride.value = true;
 }
 
-async function copyResult() {
-  const output =
-    store.activeMode === 'grammar'
-      ? grammar.correctedText
-      : translateResult.value?.output;
+async function writeClipboard(output: string) {
   if (!output) return;
   try {
     await navigator.clipboard.writeText(output);
@@ -311,6 +322,19 @@ async function copyResult() {
   window.setTimeout(() => {
     if (copyLabel.value === t('translate.copied')) copyLabel.value = '';
   }, 1200);
+}
+
+async function copyResult() {
+  const output =
+    store.activeMode === 'grammar'
+      ? grammar.correctedText
+      : preferredTranslation.value?.output;
+  if (!output) return;
+  await writeClipboard(output);
+}
+
+function copyEngineOutput(output: string) {
+  void writeClipboard(output);
 }
 
 function showClipFlash(message: string) {
@@ -382,8 +406,9 @@ async function saveClip(text: string, note?: string | null) {
 function saveSearchInput() {
   const input = store.input.trim();
   const result = translateResult.value;
-  if (result && result.input.trim() === input) {
-    void saveClip(result.input, result.output);
+  const preferred = preferredTranslation.value;
+  if (result && preferred && result.input.trim() === input) {
+    void saveClip(result.input, preferred.output);
     return;
   }
   void saveClip(input);
@@ -391,8 +416,9 @@ function saveSearchInput() {
 
 function saveTranslateOutput() {
   const result = translateResult.value;
-  if (!result) return;
-  void saveClip(result.input, result.output);
+  const preferred = preferredTranslation.value;
+  if (!result || !preferred) return;
+  void saveClip(result.input, preferred.output);
 }
 
 function saveWordCard() {
@@ -408,8 +434,9 @@ function saveGrammarClip(text: string) {
 const inputClipped = computed(() => {
   const input = store.input.trim();
   const result = translateResult.value;
-  if (result && result.input.trim() === input) {
-    const pair = pairClip(result.input, result.output);
+  const preferred = preferredTranslation.value;
+  if (result && preferred && result.input.trim() === input) {
+    const pair = pairClip(result.input, preferred.output);
     return isClipMatch(clipNorms.value, pair.text, pair.note, input);
   }
   return isClipMatch(clipNorms.value, input);
@@ -417,8 +444,9 @@ const inputClipped = computed(() => {
 
 const outputClipped = computed(() => {
   const result = translateResult.value;
-  if (!result) return false;
-  const pair = pairClip(result.input, result.output);
+  const preferred = preferredTranslation.value;
+  if (!result || !preferred) return false;
+  const pair = pairClip(result.input, preferred.output);
   return isClipMatch(clipNorms.value, pair.text, pair.note);
 });
 
@@ -533,12 +561,17 @@ function openHistoryEntry(entry: HistoryEntry) {
 const statusText = computed(() => {
   const snapshot = settings.value;
   if (!snapshot) return t('translate.engineUnconfigured');
-  const active = snapshot.providers.find((provider) => provider.id === snapshot.defaultTranslate);
-  if (!active) return t('translate.engineUnset');
-  return t('translate.status', {
-    label: active.label,
-    key: active.hasKey ? t('translate.keyOn') : t('translate.keyOff'),
-  });
+  const enabled = snapshot.providers.filter((provider) => provider.enabled);
+  if (enabled.length === 0) return t('translate.engineUnset');
+  if (enabled.length === 1) {
+    const active = enabled[0];
+    const ready = active.id === 'youdao' ? active.hasKey && active.hasSecret : active.hasKey;
+    return t('translate.status', {
+      label: active.label,
+      key: ready ? t('translate.keyOn') : t('translate.keyOff'),
+    });
+  }
+  return t('translate.statusMany', { count: enabled.length });
 });
 
 const permissionWarning = computed(() => footerPermissionWarning(permissions.value, tx));
@@ -834,13 +867,13 @@ watch(
           </button>
           <span class="spacer"></span>
           <ClipBookmark
-            v-if="translateResult"
+            v-if="preferredTranslation"
             :saved="outputClipped"
             :label="t('clips.saveOutput')"
             @click="saveTranslateOutput"
           />
           <button
-            v-if="translateResult"
+            v-if="preferredTranslation"
             class="icon-btn"
             type="button"
             :aria-label="t('translate.copy')"
@@ -861,8 +894,40 @@ watch(
           <div v-if="translateError.hint" class="muted">{{ translateError.hint }}</div>
           <code class="copyable">{{ translateError.copyable }}</code>
         </div>
-        <div v-else-if="translateResult" class="result-box" data-tauri-drag-region="false">
-          <p class="output">{{ translateResult.output }}</p>
+        <div v-else-if="translateResult" class="result-stack" data-tauri-drag-region="false">
+          <article
+            v-for="item in translateResult.results"
+            :key="item.id"
+            class="engine-card"
+            :class="{ failed: Boolean(item.error) }"
+          >
+            <div class="engine-card-head">
+              <span class="engine-name">{{ item.engine }}</span>
+              <span
+                v-if="translateResult.results.length > 1 && item.id === translateResult.preferredId && item.output"
+                class="engine-tag"
+              >{{ t('translate.preferred') }}</span>
+              <span class="spacer"></span>
+              <button
+                v-if="item.output"
+                class="icon-btn"
+                type="button"
+                :aria-label="t('translate.copyOne', { engine: item.engine })"
+                :title="t('translate.copy')"
+                @click="copyEngineOutput(item.output)"
+              >
+                <IconCopy :size="15" :stroke-width="1.75" />
+              </button>
+            </div>
+            <p v-if="item.output" class="output">{{ item.output }}</p>
+            <p v-else class="engine-error">{{ item.error?.message || t('translate.engineFailed') }}</p>
+            <p v-if="item.error?.hint" class="muted">{{ item.error.hint }}</p>
+            <code v-if="item.error?.copyable" class="copyable">{{ item.error.copyable }}</code>
+            <div v-if="item.output" class="meta">
+              <span v-if="item.detectedFrom || item.target">{{ languagePairLabel(item.detectedFrom, item.target, t) }}</span>
+              <span>{{ item.durationMs }} ms</span>
+            </div>
+          </article>
           <TranslateEnrichment
             v-if="translateResult.enrichmentPending || translateResult.enrichment"
             :word="enrichmentWord(translateResult)"
@@ -871,11 +936,6 @@ watch(
             :saved="wordClipped"
             @save="saveWordCard"
           />
-          <div class="meta">
-            <span>{{ translateResult.engine }}</span>
-            <span v-if="translateResult.detectedFrom || translateResult.target">{{ languagePairLabel(translateResult.detectedFrom, translateResult.target, t) }}</span>
-            <span>{{ translateResult.durationMs }} ms</span>
-          </div>
         </div>
         <div v-else class="state-box">
           <IconLanguage :size="26" :stroke-width="1.5" />

@@ -610,6 +610,56 @@ textarea,
   min-height: 0;
 }
 
+.result-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+}
+
+.engine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--j-surface);
+  border: 1px solid var(--j-border);
+  border-radius: var(--j-radius-card);
+}
+
+.engine-card.failed {
+  background: color-mix(in srgb, var(--j-danger) 7%, transparent);
+  border-color: color-mix(in srgb, var(--j-danger) 28%, transparent);
+}
+
+.engine-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.engine-name {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.engine-tag {
+  font-size: 11px;
+  color: var(--j-faint);
+}
+
+.engine-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--j-danger);
+}
+
+.result-stack:has(.word-card) {
+  min-height: 0;
+}
+
 .word-card {
   display: flex;
   flex-direction: column;

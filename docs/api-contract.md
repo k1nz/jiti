@@ -1,6 +1,6 @@
 # Jiti IPC 契约
 
-> 版本：**SCHEMA_VERSION = 13** · 2026-08-31 · 收藏 + 复习课独立窗
+> 版本：**SCHEMA_VERSION = 14** · 2026-09-23 · 多引擎并行翻译
 > 事实源：`packages/native/src/ipc.rs`（tauri-specta 生成 `packages/ui/src/ipc/bindings.ts`）
 > 本文同时是未来远程后端 OpenAPI 初稿。破坏性变更必升 `SCHEMA_VERSION`；新字段一律 optional。
 
@@ -10,7 +10,8 @@
 
 | 命令 | 入参 | 出参 | 说明 |
 |---|---|---|---|
-| `translate` | `TranslateRequest` | `TranslateResult` / `EngineErrorPayload` | 翻译；成功可写 `history(kind=translate)`。英语短词（英译中看原文、中译英看译文）经 `translate://enriched` 后台补发词卡，失败不影响译文 |
+| `translate` | `TranslateRequest` | `TranslateOutcome` / `EngineErrorPayload` | 对所有已启用引擎并行翻译。`results` 每条是该引擎的译文或错误；默认引擎排在前面，第一条成功的结果为 `preferredId`（词卡与历史）。整单失败只用于空文本或没有启用引擎。英语短词经 `translate://enriched` 补词卡 |
+| `provider_save_api_secret` | `provider`, `apiSecret` | `ProvidersSnapshot` | 有道应用密钥，只写入 `keys.json` |
 | `grammar_check` | `GrammarRequest` + progress Channel | `GrammarCheckOutcome` / `EngineErrorPayload` | SSE+NDJSON；`requestId` 可选；被替换的请求返回 `cancelled` 且不写历史/错题；`mistakeIds` 与 `result.errors` 按下标对齐 |
 | `mistakes_list` | `MistakeFilter` | `MistakeList` | 分页/全量筛选 |
 | `mistakes_create` | `NewMistake` | `Mistake` | 手动收录；缺省 status 用偏好 `defaultStatus` |
@@ -61,6 +62,15 @@ Clip { id, createdAt, text, note?, kind: "word"|"phrase"|"sentence", status, ...
 ClipSaveResult { clip: Clip, created: boolean }
 ReviewPlan { id, horizonDays, currentDay, summary, days: ReviewPlanDay[], items: ReviewPlanItem[] }
 ReviewGradeRequest { itemId, answer?, outcome, markLearned }
+
+TranslateOutcome {
+  input: string
+  preferredId?: string | null
+  results: { id, engine, output, detectedFrom?, target, durationMs, error? }[]
+  enrichment?: { ... }          // 与原先 TranslateResult.enrichment 相同，挂在首选译文上
+  enrichmentWord?: string
+  enrichmentPending?: boolean
+}
 
 TranslateResult.enrichment?: {
   word?, phonetic?, audioDataUrl?, mnemonic?, mnemonicZh?, roots?,
