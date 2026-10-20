@@ -305,10 +305,10 @@ export type GrammarError_Serialize = {
 export type GrammarProgressEvent = GrammarProgressEvent_Serialize | GrammarProgressEvent_Deserialize;
 
 /**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
-export type GrammarProgressEvent_Deserialize = ({ kind: "started"; engine: string }) & { error?: never; reason?: never; text?: never } | ({ kind: "overall"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "correctedText"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "error"; error: GrammarError_Deserialize }) & { engine?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { engine?: never; error?: never; text?: never } | ({ kind: "finished" }) & { engine?: never; error?: never; reason?: never; text?: never };
+export type GrammarProgressEvent_Deserialize = ({ kind: "started"; engine: string }) & { error?: never; reason?: never; text?: never } | ({ kind: "overall"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "correctedText"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "translation"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "error"; error: GrammarError_Deserialize }) & { engine?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { engine?: never; error?: never; text?: never } | ({ kind: "finished" }) & { engine?: never; error?: never; reason?: never; text?: never };
 
 /**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
-export type GrammarProgressEvent_Serialize = ({ kind: "started"; engine: string }) & { error?: never; reason?: never; text?: never } | ({ kind: "overall"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "correctedText"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "error"; error: GrammarError_Serialize }) & { engine?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { engine?: never; error?: never; text?: never } | ({ kind: "finished" }) & { engine?: never; error?: never; reason?: never; text?: never };
+export type GrammarProgressEvent_Serialize = ({ kind: "started"; engine: string }) & { error?: never; reason?: never; text?: never } | ({ kind: "overall"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "correctedText"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "translation"; text: string }) & { engine?: never; error?: never; reason?: never } | ({ kind: "error"; error: GrammarError_Serialize }) & { engine?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { engine?: never; error?: never; text?: never } | ({ kind: "finished" }) & { engine?: never; error?: never; reason?: never; text?: never };
 
 /**  语法请求：M2 默认且只允许 `llm`。 */
 export type GrammarRequest = GrammarRequest_Serialize | GrammarRequest_Deserialize;
@@ -336,6 +336,8 @@ export type GrammarResult_Deserialize = {
 	input: string,
 	errors: GrammarError_Deserialize[],
 	correctedText?: string | null,
+	/**  纠正句的简体中文译文。 */
+	translation?: string | null,
 	overall?: string | null,
 	durationMs: number,
 };
@@ -345,6 +347,8 @@ export type GrammarResult_Serialize = {
 	input: string,
 	errors: GrammarError_Serialize[],
 	correctedText?: string | null,
+	/**  纠正句的简体中文译文。 */
+	translation?: string | null,
 	overall?: string | null,
 	durationMs: number,
 };

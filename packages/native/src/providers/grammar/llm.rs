@@ -24,8 +24,9 @@ Output ONLY NDJSON: one JSON object per line. No markdown, no commentary.
 Emit records in this exact order:
 1. {"type":"overall","text":"<one-sentence Chinese summary>"}
 2. {"type":"correctedText","text":"<full corrected English text>"}
-3. zero or more error records
-4. {"type":"done"}
+3. {"type":"translation","text":"<natural Simplified Chinese translation of correctedText>"}
+4. zero or more error records
+5. {"type":"done"}
 
 Each error record:
 {"type":"error","original":"<exact substring copied from the input>","corrected":"<replacement>","errorType":"grammar|spelling|punctuation|word_choice|style","severity":"low|medium|high","explanation":"<Chinese explanation>","suggestions":["<optional alternatives>"]}
@@ -34,7 +35,8 @@ Rules:
 - original MUST be copied verbatim from the input so it can be located uniquely.
 - errorType MUST be one of: grammar, spelling, punctuation, word_choice, style.
 - severity MUST be one of: low, medium, high.
-- If the text is already correct, still emit overall, correctedText (same as input), and done; omit error records.
+- translation MUST render the corrected English sentence in natural Simplified Chinese. Do not repeat the summary.
+- If the text is already correct, still emit overall, correctedText (same as input), translation, and done; omit error records.
 - Do not wrap output in markdown fences.
 "#;
 
@@ -42,12 +44,13 @@ pub const RETRY_SYSTEM_PROMPT: &str = r#"You are an English grammar checker for 
 Check ONLY English text. Explain every issue in Simplified Chinese.
 Output a SINGLE JSON object, no markdown, no NDJSON:
 
-{"overall":"<one-sentence Chinese summary>","correctedText":"<full corrected English text>","errors":[{"original":"<exact substring from the input>","corrected":"<replacement>","errorType":"grammar|spelling|punctuation|word_choice|style","severity":"low|medium|high","explanation":"<Chinese explanation>","suggestions":[]}]}
+{"overall":"<one-sentence Chinese summary>","correctedText":"<full corrected English text>","translation":"<natural Simplified Chinese translation of correctedText>","errors":[{"original":"<exact substring from the input>","corrected":"<replacement>","errorType":"grammar|spelling|punctuation|word_choice|style","severity":"low|medium|high","explanation":"<Chinese explanation>","suggestions":[]}]}
 
 Rules:
 - original MUST be copied verbatim from the input.
 - errorType MUST be one of: grammar, spelling, punctuation, word_choice, style.
 - severity MUST be one of: low, medium, high.
+- translation MUST render correctedText in natural Simplified Chinese, not repeat the summary.
 - If the text is already correct, errors is an empty array.
 - Do not wrap output in markdown fences.
 "#;
@@ -57,6 +60,7 @@ Rules:
 struct StrictGrammarJson {
     overall: String,
     corrected_text: String,
+    translation: String,
     #[serde(default)]
     errors: Vec<NdjsonError>,
 }
@@ -311,6 +315,14 @@ async fn check_strict(
         text,
         emit,
     )?;
+    apply_record(
+        &mut draft,
+        NdjsonRecord::Translation {
+            text: strict.translation,
+        },
+        text,
+        emit,
+    )?;
     for raw_err in strict.errors {
         apply_record(&mut draft, NdjsonRecord::Error(raw_err), text, emit)?;
     }
@@ -458,6 +470,7 @@ mod tests {
         let records = [
             r#"{"type":"overall","text":"主谓不一致"}"#,
             r#"{"type":"correctedText","text":"He goes to school."}"#,
+            r#"{"type":"translation","text":"他去上学。"}"#,
             r#"{"type":"error","original":"go","corrected":"goes","errorType":"grammar","severity":"high","explanation":"第三人称单数需 goes","suggestions":["goes"]}"#,
             r#"{"type":"done"}"#,
         ];
@@ -500,6 +513,7 @@ mod tests {
         mock.assert();
         let result = out.expect("stream grammar should succeed");
         assert_eq!(result.corrected_text.as_deref(), Some("He goes to school."));
+        assert_eq!(result.translation.as_deref(), Some("他去上学。"));
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0].offset, Some(3));
         assert!(events
@@ -534,7 +548,7 @@ mod tests {
             .mock("POST", "/v1/chat/completions")
             .with_status(200)
             .with_body(
-                r#"{"choices":[{"message":{"content":"{\"overall\":\"无误\",\"correctedText\":\"Hello.\",\"errors\":[]}"}}]}"#,
+                r#"{"choices":[{"message":{"content":"{\"overall\":\"无误\",\"correctedText\":\"Hello.\",\"translation\":\"你好。\",\"errors\":[]}"}}]}"#,
             )
             .expect(1)
             .create();
@@ -550,6 +564,7 @@ mod tests {
         good.assert();
         let result = out.expect("retry should succeed");
         assert_eq!(result.overall.as_deref(), Some("无误"));
+        assert_eq!(result.translation.as_deref(), Some("你好。"));
         assert!(events
             .iter()
             .any(|e| matches!(e, GrammarProgressEvent::Retrying { .. })));
@@ -602,7 +617,9 @@ mod tests {
         assert!(SYSTEM_PROMPT.contains("word_choice"));
         assert!(SYSTEM_PROMPT.contains(r#"{"type":"done"}"#));
         assert!(RETRY_SYSTEM_PROMPT.contains("SINGLE JSON object"));
-        assert_eq!(prompt_version(), "v1");
+        assert!(SYSTEM_PROMPT.contains(r#"{"type":"translation""#));
+        assert!(RETRY_SYSTEM_PROMPT.contains("\"translation\""));
+        assert_eq!(prompt_version(), "v2");
     }
 
     #[test]

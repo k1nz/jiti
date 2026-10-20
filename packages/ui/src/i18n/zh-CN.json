@@ -50,6 +50,7 @@
     "checking": "正在检查",
     "retrying": "正在重新解析",
     "ok": "未发现语法问题",
+    "translation": "译文",
     "hint": "输入英语文本，或选中一段文字后按 {shortcut}"
   },
   "history": {

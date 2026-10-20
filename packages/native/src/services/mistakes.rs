@@ -629,6 +629,7 @@ mod tests {
             input: "He go to school.".into(),
             errors,
             corrected_text: Some("He goes to school.".into()),
+            translation: Some("他去上学。".into()),
             overall: Some("主谓不一致".into()),
             duration_ms: 12,
         }

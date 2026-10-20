@@ -133,7 +133,16 @@ const statusLabel = computed(() => {
 
     <div v-else-if="showResults" class="grammar-results" data-tauri-drag-region="false" aria-live="polite">
       <p v-if="grammar.overall" class="grammar-overall">{{ grammar.overall }}</p>
-      <p v-if="grammar.correctedText" class="grammar-corrected">{{ grammar.correctedText }}</p>
+      <div v-if="grammar.correctedText" class="grammar-rewrite">
+        <p class="grammar-corrected">{{ grammar.correctedText }}</p>
+        <p
+          v-if="grammar.translation"
+          class="grammar-translation"
+          :aria-label="t('grammar.translation')"
+        >
+          {{ grammar.translation }}
+        </p>
+      </div>
       <p
         v-if="!busy && grammar.status === 'done' && grammar.errors.length === 0"
         class="grammar-success"

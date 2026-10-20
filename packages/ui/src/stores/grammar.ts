@@ -16,6 +16,7 @@ export const useGrammarStore = defineStore('grammar', () => {
   const runId = ref(0);
   const overall = ref<string | null>(null);
   const correctedText = ref<string | null>(null);
+  const translation = ref<string | null>(null);
   const errors = ref<GrammarError[]>([]);
   const result = ref<GrammarResult_Serialize | null>(null);
   const error = ref<EngineErrorPayload | null>(null);
@@ -26,7 +27,11 @@ export const useGrammarStore = defineStore('grammar', () => {
   let spinnerTimer: ReturnType<typeof setTimeout> | undefined;
 
   const hasContent = computed(
-    () => overall.value !== null || correctedText.value !== null || errors.value.length > 0,
+    () =>
+      overall.value !== null ||
+      correctedText.value !== null ||
+      translation.value !== null ||
+      errors.value.length > 0,
   );
 
   function isLive(id: number) {
@@ -61,6 +66,7 @@ export const useGrammarStore = defineStore('grammar', () => {
     retrying.value = false;
     overall.value = null;
     correctedText.value = null;
+    translation.value = null;
     errors.value = [];
     result.value = null;
     error.value = null;
@@ -85,6 +91,11 @@ export const useGrammarStore = defineStore('grammar', () => {
         correctedText.value = event.text;
         if (hasContent.value) spinnerVisible.value = false;
         break;
+      case 'translation':
+        status.value = 'streaming';
+        translation.value = event.text;
+        if (hasContent.value) spinnerVisible.value = false;
+        break;
       case 'error':
         status.value = 'streaming';
         errors.value = [...errors.value, event.error];
@@ -94,6 +105,7 @@ export const useGrammarStore = defineStore('grammar', () => {
         retrying.value = true;
         overall.value = null;
         correctedText.value = null;
+        translation.value = null;
         errors.value = [];
         result.value = null;
         mistakeIds.value = [];
@@ -116,6 +128,7 @@ export const useGrammarStore = defineStore('grammar', () => {
     result.value = finalResult;
     overall.value = finalResult.overall ?? overall.value;
     correctedText.value = finalResult.correctedText ?? correctedText.value;
+    translation.value = finalResult.translation ?? translation.value;
     errors.value = finalResult.errors;
     mistakeIds.value = alignMistakeIds(ids, finalResult.errors.length);
     retrying.value = false;
@@ -153,6 +166,7 @@ export const useGrammarStore = defineStore('grammar', () => {
     runId,
     overall,
     correctedText,
+    translation,
     errors,
     result,
     error,

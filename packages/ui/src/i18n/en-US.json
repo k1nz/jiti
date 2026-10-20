@@ -50,6 +50,7 @@
     "checking": "Checking",
     "retrying": "Reparsing",
     "ok": "No grammar issues found",
+    "translation": "Translation",
     "hint": "Type English text, or select some text and press {shortcut}"
   },
   "history": {

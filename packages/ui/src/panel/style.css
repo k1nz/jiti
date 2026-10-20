@@ -1299,11 +1299,27 @@ textarea,
   color: var(--j-muted);
 }
 
+.grammar-rewrite {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .grammar-corrected {
   font-size: 16px;
   font-weight: 550;
   line-height: 1.65;
   letter-spacing: -0.012em;
+}
+
+.grammar-translation {
+  margin: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--j-muted);
 }
 
 .grammar-success {

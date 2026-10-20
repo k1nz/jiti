@@ -22,6 +22,7 @@ function sampleResult(): GrammarResult_Serialize {
     input: 'He go to school.',
     errors: [sampleError()],
     correctedText: 'He goes to school.',
+    translation: '他去上学。',
     overall: '主谓不一致',
     durationMs: 12,
   };
@@ -41,12 +42,15 @@ describe('grammar store', () => {
     expect(store.status).toBe('streaming');
     expect(store.overall).toBe('主谓不一致');
     store.applyProgress(id, { kind: 'correctedText', text: 'He goes to school.' });
+    store.applyProgress(id, { kind: 'translation', text: '他去上学。' });
+    expect(store.translation).toBe('他去上学。');
     store.applyProgress(id, { kind: 'error', error: sampleError() });
     expect(store.errors).toHaveLength(1);
     store.applyProgress(id, { kind: 'finished' });
     store.finish(id, sampleResult());
     expect(store.status).toBe('done');
     expect(store.result?.correctedText).toBe('He goes to school.');
+    expect(store.translation).toBe('他去上学。');
     expect(store.mistakeIds).toEqual([null]);
   });
 
@@ -54,10 +58,12 @@ describe('grammar store', () => {
     const store = useGrammarStore();
     const id = store.begin();
     store.applyProgress(id, { kind: 'overall', text: '旧总评' });
+    store.applyProgress(id, { kind: 'translation', text: '旧译文' });
     store.applyProgress(id, { kind: 'error', error: sampleError() });
     store.applyProgress(id, { kind: 'retrying', reason: '正在重新解析' });
     expect(store.retrying).toBe(true);
     expect(store.overall).toBeNull();
+    expect(store.translation).toBeNull();
     expect(store.errors).toEqual([]);
     expect(store.status).toBe('loading');
   });
@@ -89,6 +95,7 @@ describe('grammar store', () => {
       input: 'Hello.',
       errors: [],
       correctedText: 'Hello.',
+      translation: '你好。',
       overall: '没有问题',
       durationMs: 8,
     });

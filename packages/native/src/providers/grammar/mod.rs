@@ -19,7 +19,7 @@ use crate::services::{self, transport::Transport};
 pub const ENGINE_LLM: &str = "llm";
 pub const ENGINE_LANGUAGETOOL: &str = "languagetool";
 pub const MAX_INPUT_CHARS: usize = 4000;
-pub const PROMPT_VERSION: &str = "v1";
+pub const PROMPT_VERSION: &str = "v2";
 const CACHE_CAP: usize = 32;
 
 /// 语法请求：M2 默认且只允许 `llm`。
@@ -77,6 +77,9 @@ pub struct GrammarResult {
     pub errors: Vec<GrammarError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub corrected_text: Option<String>,
+    /// 纠正句的简体中文译文。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overall: Option<String>,
     pub duration_ms: u32,
@@ -89,6 +92,7 @@ pub enum GrammarProgressEvent {
     Started { engine: String },
     Overall { text: String },
     CorrectedText { text: String },
+    Translation { text: String },
     Error { error: GrammarError },
     Retrying { reason: String },
     Finished,
@@ -98,6 +102,7 @@ pub enum GrammarProgressEvent {
 pub struct GrammarDraft {
     pub overall: Option<String>,
     pub corrected_text: Option<String>,
+    pub translation: Option<String>,
     pub errors: Vec<GrammarError>,
     pub done: bool,
 }
@@ -117,6 +122,14 @@ impl GrammarDraft {
                 self.corrected_text = Some(text.clone());
                 Ok(Some(GrammarProgressEvent::CorrectedText { text }))
             }
+            NdjsonRecord::Translation { text } => {
+                let text = text.trim().to_string();
+                if text.is_empty() {
+                    return Err(ParseFail::MissingRecord);
+                }
+                self.translation = Some(text.clone());
+                Ok(Some(GrammarProgressEvent::Translation { text }))
+            }
             NdjsonRecord::Error(raw) => {
                 let error = attach_offset(raw.into_error(), input);
                 self.errors.push(error.clone());
@@ -133,7 +146,7 @@ impl GrammarDraft {
         if !self.done {
             return Err(ParseFail::MissingDone);
         }
-        if self.overall.is_none() || self.corrected_text.is_none() {
+        if self.overall.is_none() || self.corrected_text.is_none() || self.translation.is_none() {
             return Err(ParseFail::MissingRecord);
         }
         Ok(GrammarResult {
@@ -141,6 +154,7 @@ impl GrammarDraft {
             input,
             errors: self.errors,
             corrected_text: self.corrected_text,
+            translation: self.translation,
             overall: self.overall,
             duration_ms: 0,
         })
@@ -154,6 +168,8 @@ pub enum NdjsonRecord {
     Overall { text: String },
     #[serde(rename = "correctedText")]
     CorrectedText { text: String },
+    #[serde(rename = "translation")]
+    Translation { text: String },
     #[serde(rename = "error")]
     Error(NdjsonError),
     #[serde(rename = "done")]
@@ -199,7 +215,7 @@ impl ParseFail {
         match self {
             Self::InvalidLine(line) => format!("无法解析记录：{line}"),
             Self::MissingDone => "响应缺少结束记录".into(),
-            Self::MissingRecord => "响应缺少总评或改写".into(),
+            Self::MissingRecord => "响应缺少总评、改写或译文".into(),
         }
     }
 }
@@ -358,6 +374,9 @@ fn replay_result(result: &GrammarResult, emit: &mut impl FnMut(GrammarProgressEv
     if let Some(text) = &result.corrected_text {
         emit(GrammarProgressEvent::CorrectedText { text: text.clone() });
     }
+    if let Some(text) = &result.translation {
+        emit(GrammarProgressEvent::Translation { text: text.clone() });
+    }
     for error in &result.errors {
         emit(GrammarProgressEvent::Error {
             error: error.clone(),
@@ -475,6 +494,12 @@ mod tests {
             .unwrap();
         draft
             .ingest(
+                parse_ndjson_line(r#"{"type":"translation","text":"他去上学。"}"#).unwrap(),
+                input,
+            )
+            .unwrap();
+        draft
+            .ingest(
                 parse_ndjson_line(
                     r#"{"type":"error","original":"go","corrected":"goes","errorType":"grammar","severity":"high","explanation":"第三人称单数","suggestions":["goes"]}"#,
                 )
@@ -493,6 +518,33 @@ mod tests {
         assert_eq!(result.errors[0].offset, Some(3));
         assert_eq!(result.errors[0].length, Some(2));
         assert_eq!(result.overall.as_deref(), Some("主谓不一致"));
+        assert_eq!(result.translation.as_deref(), Some("他去上学。"));
+    }
+
+    #[test]
+    fn missing_translation_is_incomplete() {
+        let input = "He go to school.";
+        let mut draft = GrammarDraft::default();
+        draft
+            .ingest(
+                parse_ndjson_line(r#"{"type":"overall","text":"主谓不一致"}"#).unwrap(),
+                input,
+            )
+            .unwrap();
+        draft
+            .ingest(
+                parse_ndjson_line(r#"{"type":"correctedText","text":"He goes to school."}"#)
+                    .unwrap(),
+                input,
+            )
+            .unwrap();
+        draft
+            .ingest(parse_ndjson_line(r#"{"type":"done"}"#).unwrap(), input)
+            .unwrap();
+        assert!(matches!(
+            draft.finalize("LLM".into(), input.into()),
+            Err(ParseFail::MissingRecord)
+        ));
     }
 
     #[test]
