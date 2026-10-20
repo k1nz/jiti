@@ -20,8 +20,39 @@ permissions:
   contents: write
 
 jobs:
+  # Create the release once, before the matrix. tauri-action's get-or-create
+  # races when several jobs 404 at the same time: the second createRelease
+  # replaces the release and drops assets the first job already uploaded.
+  # v0.5.0-rc.8 lost its macOS x64 installers this way.
+  prepare-release:
+    name: prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - name: Create the prerelease
+        id: release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          if ! id="$(gh release view "$tag" --json databaseId --jq .databaseId 2>/dev/null)"; then
+            gh release create "$tag" \
+              --title "Jiti ${version}" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --notes ""
+            id="$(gh release view "$tag" --json databaseId --jq .databaseId)"
+          fi
+          echo "release_id=${id}" >> "$GITHUB_OUTPUT"
+          echo "Using release ${id} for ${tag}"
+
   build:
     name: ${{ matrix.name }}
+    needs: prepare-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -83,6 +114,7 @@ jobs:
           projectPath: packages/native
           args: ${{ matrix.args }}
           includeUpdaterJson: false
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Jiti __VERSION__
           releaseDraft: false
@@ -132,3 +164,32 @@ jobs:
             checksums/**
           if-no-files-found: warn
           retention-days: 14
+
+  verify-release:
+    name: verify release assets
+    needs: build
+    if: github.ref_type == 'tag' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every platform installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          names="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')"
+          echo "$names"
+          version="${GITHUB_REF_NAME#v}"
+          missing=0
+          for asset in \
+            "Jiti_${version}_x64.dmg" \
+            "Jiti_${version}_aarch64.dmg" \
+            "Jiti_${version}_x64-setup.exe" \
+            "Jiti_x64.app.tar.gz" \
+            "Jiti_aarch64.app.tar.gz"
+          do
+            if ! grep -Fxq "$asset" <<<"$names"; then
+              echo "::error::Release $GITHUB_REF_NAME is missing ${asset}"
+              missing=1
+            fi
+          done
+          exit "$missing"

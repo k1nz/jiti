@@ -21,8 +21,37 @@ permissions:
   contents: write
 
 jobs:
+  # Same race as rc-build.yml: one job must create the release before the
+  # matrix uploads, or a later createRelease replaces it and drops assets.
+  prepare-release:
+    name: prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/native/tauri.conf.json').version")"
+          tag="v${version}"
+          if ! id="$(gh release view "$tag" --json databaseId --jq .databaseId 2>/dev/null)"; then
+            gh release create "$tag" \
+              --draft \
+              --title "Jiti v${version}" \
+              --target "$GITHUB_SHA" \
+              --notes ""
+            id="$(gh release view "$tag" --json databaseId --jq .databaseId)"
+          fi
+          echo "release_id=${id}" >> "$GITHUB_OUTPUT"
+          echo "Using release ${id} for ${tag}"
+
   release:
     name: ${{ matrix.name }}
+    needs: prepare-release
     runs-on: ${{ matrix.os }}
     environment: release
     strategy:
@@ -89,6 +118,7 @@ jobs:
         with:
           projectPath: packages/native
           args: ${{ matrix.args }}
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: v__VERSION__
           releaseName: Jiti v__VERSION__
           releaseDraft: true
