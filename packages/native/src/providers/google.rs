@@ -48,10 +48,7 @@ pub async fn translate(
     let resp = transport
         .post_json_with_headers(&url, &[("X-Goog-Api-Key", api_key)], body)
         .await
-        .map_err(|e| EngineError::Network {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
+        .map_err(|e| EngineError::from_transport(provider, &e))?;
     let status = resp.status().as_u16();
     let raw = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {

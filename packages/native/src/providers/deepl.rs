@@ -48,10 +48,7 @@ pub async fn translate(
     let resp = transport
         .post_json_with_headers(&url, &[("Authorization", auth.as_str())], body)
         .await
-        .map_err(|e| EngineError::Network {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
+        .map_err(|e| EngineError::from_transport(&provider, &e))?;
 
     let status = resp.status().as_u16();
     let retry_after = resp
@@ -116,10 +113,7 @@ pub async fn test_connection(
     let resp = transport
         .get_with_headers(&usage_url(&base), &[("Authorization", auth.as_str())])
         .await
-        .map_err(|e| EngineError::Network {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
+        .map_err(|e| EngineError::from_transport(&provider, &e))?;
     let status = resp.status().as_u16();
     let body = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {

@@ -65,6 +65,14 @@ pub enum EngineError {
 }
 
 impl EngineError {
+    /// 出网失败。detail 带上 reqwest 的 source，避免只剩 “error sending request for url”。
+    pub fn from_transport(provider: &str, err: &reqwest::Error) -> Self {
+        EngineError::Network {
+            provider: provider.into(),
+            detail: crate::services::transport::describe_reqwest_error(err),
+        }
+    }
+
     /// 统一的 HTTP 错误分类（验收：无 Key / Key 错误 / 限流 / 网络 可区分）。
     pub fn from_http(provider: &str, status: u16, detail: &str, retry_after: Option<u64>) -> Self {
         match status {

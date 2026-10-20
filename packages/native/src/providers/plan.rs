@@ -92,10 +92,7 @@ pub async fn fetch_copy(
             REVIEW_TIMEOUT,
         )
         .await
-        .map_err(|e| EngineError::Network {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
+        .map_err(|e| EngineError::from_transport(&provider, &e))?;
     let status = resp.status().as_u16();
     let retry_after = resp
         .headers()

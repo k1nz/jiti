@@ -406,10 +406,10 @@ async fn post(
     .await
     {
         Ok(Ok(resp)) => Ok(resp),
-        Ok(Err(e)) => Err(EngineError::Network {
-            provider: provider_label(PROVIDER_LLM).into(),
-            detail: e.to_string(),
-        }),
+        Ok(Err(e)) => Err(EngineError::from_transport(
+            provider_label(PROVIDER_LLM),
+            &e,
+        )),
         Err(_) => Err(EngineError::Network {
             provider: provider_label(PROVIDER_LLM).into(),
             detail: format!("连接或首字节超过 {}ms", first_byte.as_millis()),

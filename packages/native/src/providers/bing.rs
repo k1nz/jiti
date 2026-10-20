@@ -53,10 +53,7 @@ pub async fn translate(
     let resp = transport
         .post_json_with_headers(&url, &headers, json!([{ "Text": req.text }]))
         .await
-        .map_err(|e| EngineError::Network {
-            provider: provider.into(),
-            detail: e.to_string(),
-        })?;
+        .map_err(|e| EngineError::from_transport(provider, &e))?;
     let status = resp.status().as_u16();
     let retry_after = resp
         .headers()
