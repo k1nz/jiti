@@ -5,6 +5,7 @@
   "tabs": {
     "translate": "Translate",
     "grammar": "Grammar",
+    "syntax": "Syntax",
     "mistakes": "Notebook",
     "history": "History"
   },
@@ -53,12 +54,65 @@
     "translation": "Translation",
     "hint": "Type English text, or select some text and press {shortcut}"
   },
+  "syntax": {
+    "action": "Analyze",
+    "analyzing": "Analyzing",
+    "retrying": "Reparsing",
+    "hint": "Type a Chinese or English sentence to see its structure, tense, constituents, and clauses",
+    "constituents": "Constituents",
+    "clauses": "Clauses",
+    "language": {
+      "zh": "Chinese",
+      "en": "English",
+      "mixed": "Mixed"
+    },
+    "sentence": {
+      "declarative": "Declarative",
+      "interrogative": "Interrogative",
+      "imperative": "Imperative",
+      "exclamatory": "Exclamatory",
+      "fragment": "Fragment"
+    },
+    "tense": {
+      "present": "Present",
+      "past": "Past",
+      "future": "Future"
+    },
+    "aspect": {
+      "simple": "Simple",
+      "progressive": "Progressive",
+      "perfect": "Perfect",
+      "perfect_progressive": "Perfect progressive"
+    },
+    "voice": {
+      "active": "Active",
+      "passive": "Passive"
+    },
+    "role": {
+      "subject": "Subject",
+      "predicate": "Predicate",
+      "object": "Object",
+      "attribute": "Attribute",
+      "adverbial": "Adverbial",
+      "complement": "Complement",
+      "other": "Other"
+    },
+    "clause": {
+      "main": "Main clause",
+      "relative": "Relative clause",
+      "noun": "Noun clause",
+      "adverbial": "Adverbial clause",
+      "coordinate": "Coordinate",
+      "other": "Other"
+    }
+  },
   "history": {
     "title": "History",
     "clear": "Clear",
     "empty": "No history yet",
     "kindTranslate": "Translate",
     "kindGrammar": "Grammar",
+    "kindSyntax": "Syntax",
     "kindReview": "Review",
     "kindPlan": "Study",
     "grammarCorrect": "Grammar is correct"
@@ -112,7 +166,7 @@
     "defaultEngineHint": "When several engines run together, this one is listed first and used for copy, bookmarks, and the word card.",
     "multiHint": "Turn on more than one engine. Translation requests them together and shows each result.",
     "writeHistory": "Write history",
-    "writeHistoryHint": "Save translate and grammar results on this device.",
+    "writeHistoryHint": "Save translate, grammar, and syntax results on this device.",
     "mistakes": "Notebook",
     "autoCollect": "Auto collect",
     "autoCollectHint": "Add grammar issues to the notebook automatically.",

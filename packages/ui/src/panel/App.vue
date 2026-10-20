@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   IconAbc,
+  IconBinaryTree,
   IconCopy,
   IconHistory,
   IconLanguage,
@@ -29,6 +30,8 @@ import type {
   SelectedText,
   GrammarProgressEvent_Deserialize,
   GrammarRequest_Deserialize,
+  SyntaxProgressEvent_Deserialize,
+  SyntaxRequest_Deserialize,
   TranslateEnrichedEvent,
 } from '../ipc/bindings';
 import { Channel } from '@tauri-apps/api/core';
@@ -64,15 +67,18 @@ import { isCancelledEngineError } from '../loading';
 import { footerPermissionWarning } from '../permissions';
 import { usePanelStore, type HotkeyKind, type PanelMode } from '../stores/panel';
 import { useGrammarStore } from '../stores/grammar';
+import { useSyntaxStore } from '../stores/syntax';
 import Onboarding from './Onboarding.vue';
 import ClipBookmark from './components/ClipBookmark.vue';
 import GrammarView from './components/GrammarView.vue';
 import MistakesView from './components/MistakesView.vue';
+import SyntaxView from './components/SyntaxView.vue';
 import TranslateEnrichment from './components/TranslateEnrichment.vue';
 
 const { t, locale } = useI18n();
 const store = usePanelStore();
 const grammar = useGrammarStore();
+const syntax = useSyntaxStore();
 const searchEl = ref<HTMLInputElement | null>(null);
 
 function tx(key: string, values?: Record<string, unknown>) {
@@ -82,6 +88,7 @@ function tx(key: string, values?: Record<string, unknown>) {
 const TABS: ReadonlyArray<{ key: PanelMode; icon: Component }> = [
   { key: 'translate', icon: IconLanguage },
   { key: 'grammar', icon: IconAbc },
+  { key: 'syntax', icon: IconBinaryTree },
   { key: 'mistakes', icon: IconNotebook },
   { key: 'history', icon: IconHistory },
 ];
@@ -235,9 +242,31 @@ async function runGrammar(text = store.input) {
   }
 }
 
+async function runSyntax(text = store.input) {
+  const input = text.trim();
+  if (!input) return;
+  const id = syntax.begin();
+  const onProgress = new Channel<SyntaxProgressEvent_Deserialize>();
+  onProgress.onmessage = (event) => syntax.applyProgress(id, event);
+  const request: SyntaxRequest_Deserialize = {
+    text: input,
+    engine: 'llm',
+    requestId: String(id),
+  };
+  try {
+    const outcome = await unwrap(commands.syntaxAnalyze(request, onProgress));
+    syntax.finish(id, outcome);
+    await reloadHistory();
+  } catch (err) {
+    if (isCancelledEngineError(err)) return;
+    syntax.fail(id, err as EngineErrorPayload);
+  }
+}
+
 function onSearchEnter() {
   if (store.activeMode === 'translate') void runTranslate();
   if (store.activeMode === 'grammar') void runGrammar();
+  if (store.activeMode === 'syntax') void runSyntax();
 }
 
 function onSearchKeydown(e: KeyboardEvent) {
@@ -264,6 +293,10 @@ function applyCapturedText(selected: SelectedText, epoch: number) {
     source.value = 'auto';
     target.value = guessTarget(selected.text);
     void runTranslate(selected.text);
+    return;
+  }
+  if (store.activeMode === 'syntax') {
+    void runSyntax(selected.text);
     return;
   }
   void runGrammar(selected.text);
@@ -431,6 +464,10 @@ function saveGrammarClip(text: string) {
   void saveClip(text, grammar.overall);
 }
 
+function saveSyntaxClip(text: string) {
+  void saveClip(text, syntax.summary);
+}
+
 const inputClipped = computed(() => {
   const input = store.input.trim();
   const result = translateResult.value;
@@ -459,6 +496,10 @@ const wordClipped = computed(() => {
 
 const grammarClipped = computed(() =>
   isClipMatch(clipNorms.value, store.input, grammar.overall),
+);
+
+const syntaxClipped = computed(() =>
+  isClipMatch(clipNorms.value, store.input, syntax.summary),
 );
 
 async function reloadHistory() {
@@ -534,6 +575,7 @@ async function openSettings() {
 
 function historyKindLabel(kind: string) {
   if (kind === 'grammar') return t('history.kindGrammar');
+  if (kind === 'syntax') return t('history.kindSyntax');
   if (kind === 'ai_review') return t('history.kindReview');
   if (kind === 'review_plan') return t('history.kindPlan');
   return t('history.kindTranslate');
@@ -592,9 +634,12 @@ const grammarShortcut = computed(() => {
 
 const grammarHint = computed(() => t('grammar.hint', { shortcut: grammarShortcut.value }));
 
+const syntaxHint = computed(() => t('syntax.hint'));
+
 const placeholder = computed(() => {
   if (store.activeMode === 'translate') return translateHint.value;
   if (store.activeMode === 'grammar') return grammarHint.value;
+  if (store.activeMode === 'syntax') return syntaxHint.value;
   return t(`tabs.${store.activeMode}`);
 });
 
@@ -649,7 +694,9 @@ async function onKeydown(e: KeyboardEvent) {
     const tag = (document.activeElement as HTMLElement | null)?.tagName;
     const hasCopy =
       (store.activeMode === 'grammar' && grammar.correctedText) ||
-      (store.activeMode !== 'grammar' && translateResult.value);
+      (store.activeMode !== 'grammar' &&
+        store.activeMode !== 'syntax' &&
+        translateResult.value);
     if (tag !== 'INPUT' && tag !== 'TEXTAREA' && hasCopy) {
       e.preventDefault();
       await copyResult();
@@ -684,7 +731,12 @@ onMounted(async () => {
     applyCapturedText(event.payload.selection, event.payload.epoch);
   });
   unlistenCapture = await events.captureChanged.listen((event) => {
-    if (store.activeMode !== 'translate' && store.activeMode !== 'grammar') return;
+    if (
+      store.activeMode !== 'translate' &&
+      store.activeMode !== 'grammar' &&
+      store.activeMode !== 'syntax'
+    )
+      return;
     applyDelayedCapture(event.payload.selection, event.payload.epoch);
   });
   unlistenVisibility = await listen<string>('panel://visibility', (event) => {
@@ -952,6 +1004,15 @@ watch(
         @check="runGrammar()"
         @copy="copyResult"
         @save-clip="saveGrammarClip"
+      />
+
+      <SyntaxView
+        v-else-if="store.activeMode === 'syntax'"
+        :input="store.input"
+        :hint="syntaxHint"
+        :saved="syntaxClipped"
+        @analyze="runSyntax()"
+        @save-clip="saveSyntaxClip"
       />
 
       <MistakesView v-else-if="store.activeMode === 'mistakes'" />

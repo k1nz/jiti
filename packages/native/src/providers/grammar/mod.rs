@@ -3,7 +3,7 @@
 //! M2 只接通 LLM；`languagetool` 分支保留，不提前加配置/UI。
 
 pub mod llm;
-mod sse;
+pub(crate) mod sse;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};

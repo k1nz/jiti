@@ -36,6 +36,8 @@ describe('panel store', () => {
     store.cycleMode(1);
     expect(store.activeMode).toBe('grammar');
     store.cycleMode(1);
+    expect(store.activeMode).toBe('syntax');
+    store.cycleMode(1);
     expect(store.activeMode).toBe('mistakes');
     store.cycleMode(1);
     expect(store.activeMode).toBe('history');

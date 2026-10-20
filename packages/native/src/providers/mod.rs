@@ -14,6 +14,7 @@ pub mod lang;
 pub mod llm;
 pub mod plan;
 pub mod review;
+pub mod syntax;
 pub mod youdao;
 
 use serde::{Deserialize, Serialize};

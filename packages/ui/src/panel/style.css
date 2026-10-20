@@ -320,6 +320,7 @@ textarea,
 
 .translate-view,
 .grammar-view,
+.syntax-view,
 .mistakes-view,
 .history-view,
 .settings-view {
@@ -1270,6 +1271,7 @@ textarea,
 
 /* ── 语法 / 错题 ── */
 .grammar-view,
+.syntax-view,
 .mistakes-view {
   display: flex;
   flex-direction: column;
@@ -1439,6 +1441,42 @@ textarea,
 .grammar-retry {
   font-size: 12px;
   color: var(--j-warning);
+}
+
+.syntax-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.syntax-chip {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--j-fg);
+  background: var(--j-tab-on);
+  border-radius: 999px;
+}
+
+.syntax-heading {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--j-faint);
+}
+
+.syntax-span {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--j-fg);
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .grammar-collect {

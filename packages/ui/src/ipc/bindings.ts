@@ -17,6 +17,7 @@ export const commands = {
 	getSelectedText: () => __TAURI_INVOKE<SelectedText>("get_selected_text"),
 	translate: (request: TranslateRequest_Deserialize) => typedError<TranslateOutcome_Serialize, EngineErrorPayload>(__TAURI_INVOKE("translate", { request })),
 	grammarCheck: (request: GrammarRequest_Deserialize, onProgress: Channel<GrammarProgressEvent_Deserialize>) => typedError<GrammarCheckOutcome_Serialize, EngineErrorPayload>(__TAURI_INVOKE("grammar_check", { request, onProgress })),
+	syntaxAnalyze: (request: SyntaxRequest_Deserialize, onProgress: Channel<SyntaxProgressEvent_Deserialize>) => typedError<SyntaxResult_Serialize, EngineErrorPayload>(__TAURI_INVOKE("syntax_analyze", { request, onProgress })),
 	providersSnapshot: () => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_snapshot")),
 	providersSave: (config: ProvidersConfig_Deserialize) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("providers_save", { config })),
 	providerSaveApiKey: (provider: string, apiKey: string) => typedError<ProvidersSnapshot, string>(__TAURI_INVOKE("provider_save_api_key", { provider, apiKey })),
@@ -108,6 +109,8 @@ export type CaptureChangedEvent = {
 	selection: SelectedText,
 };
 
+export type ClauseKind = "main" | "relative" | "noun" | "adverbial" | "coordinate" | "other";
+
 export type Clip = {
 	id: number,
 	createdAt: string,
@@ -165,6 +168,8 @@ export type ClipSavedEvent = {
 	text: string | null,
 	created: boolean,
 };
+
+export type ConstituentRole = "subject" | "predicate" | "object" | "attribute" | "adverbial" | "complement" | "other";
 
 /**  specta 单源事件契约；Tauri 侧实际事件名保持 `engine://error`（§3.5）。 */
 export type EngineErrorEvent = EngineErrorPayload;
@@ -673,6 +678,8 @@ export type SelectedText = {
 
 export type SelectionMethod = "ax" | "uia" | "clipboard" | "manual";
 
+export type SentenceType = "declarative" | "interrogative" | "imperative" | "exclamatory" | "fragment";
+
 /**
  *  settings.json 里的值：JSON 语义的封闭子集（形状与 `serde_json::Value` 同构）。
  * 
@@ -681,6 +688,124 @@ export type SelectionMethod = "ax" | "uia" | "clipboard" | "manual";
  *  legacy 实现是 `inline` 非缓存自递归，导致 bindings 导出时栈溢出。
  */
 export type SettingsValue = "Null" | boolean | number | null | string | SettingsValue[] | ([string, SettingsValue])[];
+
+export type SyntaxAspect = "simple" | "progressive" | "perfect" | "perfect_progressive";
+
+/**  从句。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
+export type SyntaxClause = SyntaxClause_Serialize | SyntaxClause_Deserialize;
+
+/**  从句。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
+export type SyntaxClause_Deserialize = {
+	offset?: number | null,
+	length?: number | null,
+	kind: ClauseKind,
+	text: string,
+	note: string,
+};
+
+/**  从句。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
+export type SyntaxClause_Serialize = {
+	offset?: number | null,
+	length?: number | null,
+	kind: ClauseKind,
+	text: string,
+	note: string,
+};
+
+/**  句子成分。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
+export type SyntaxConstituent = SyntaxConstituent_Serialize | SyntaxConstituent_Deserialize;
+
+/**  句子成分。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
+export type SyntaxConstituent_Deserialize = {
+	offset?: number | null,
+	length?: number | null,
+	role: ConstituentRole,
+	text: string,
+	note: string,
+};
+
+/**  句子成分。`text` 必须是原文子串；偏移仅在唯一匹配时写入。 */
+export type SyntaxConstituent_Serialize = {
+	offset?: number | null,
+	length?: number | null,
+	role: ConstituentRole,
+	text: string,
+	note: string,
+};
+
+export type SyntaxLanguage = "zh" | "en" | "mixed";
+
+export type SyntaxProfile = SyntaxProfile_Serialize | SyntaxProfile_Deserialize;
+
+export type SyntaxProfile_Deserialize = {
+	language: SyntaxLanguage,
+	sentenceType: SentenceType,
+	tense?: SyntaxTense | null,
+	aspect?: SyntaxAspect | null,
+	voice?: SyntaxVoice | null,
+};
+
+export type SyntaxProfile_Serialize = {
+	language: SyntaxLanguage,
+	sentenceType: SentenceType,
+	tense?: SyntaxTense | null,
+	aspect?: SyntaxAspect | null,
+	voice?: SyntaxVoice | null,
+};
+
+/**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
+export type SyntaxProgressEvent = SyntaxProgressEvent_Serialize | SyntaxProgressEvent_Deserialize;
+
+/**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
+export type SyntaxProgressEvent_Deserialize = ({ kind: "started"; engine: string }) & { clause?: never; constituent?: never; profile?: never; reason?: never; text?: never } | ({ kind: "summary"; text: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never } | ({ kind: "profile"; profile: SyntaxProfile_Deserialize }) & { clause?: never; constituent?: never; engine?: never; reason?: never; text?: never } | ({ kind: "constituent"; constituent: SyntaxConstituent_Deserialize }) & { clause?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "clause"; clause: SyntaxClause_Deserialize }) & { constituent?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; text?: never } | ({ kind: "finished" }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never; text?: never };
+
+/**  Channel 语义事件。前端只渲染这些，不接触原始 JSON/SSE。 */
+export type SyntaxProgressEvent_Serialize = ({ kind: "started"; engine: string }) & { clause?: never; constituent?: never; profile?: never; reason?: never; text?: never } | ({ kind: "summary"; text: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never } | ({ kind: "profile"; profile: SyntaxProfile_Serialize }) & { clause?: never; constituent?: never; engine?: never; reason?: never; text?: never } | ({ kind: "constituent"; constituent: SyntaxConstituent_Serialize }) & { clause?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "clause"; clause: SyntaxClause_Serialize }) & { constituent?: never; engine?: never; profile?: never; reason?: never; text?: never } | ({ kind: "retrying"; reason: string }) & { clause?: never; constituent?: never; engine?: never; profile?: never; text?: never } | ({ kind: "finished" }) & { clause?: never; constituent?: never; engine?: never; profile?: never; reason?: never; text?: never };
+
+/**  句法请求：默认且只允许 `llm`。 */
+export type SyntaxRequest = SyntaxRequest_Serialize | SyntaxRequest_Deserialize;
+
+/**  句法请求：默认且只允许 `llm`。 */
+export type SyntaxRequest_Deserialize = {
+	text: string,
+	engine?: string | null,
+	/**  前端 runId；新请求会作废仍在飞行的旧分析。 */
+	requestId?: string | null,
+};
+
+/**  句法请求：默认且只允许 `llm`。 */
+export type SyntaxRequest_Serialize = {
+	text: string,
+	engine?: string | null,
+	/**  前端 runId；新请求会作废仍在飞行的旧分析。 */
+	requestId?: string | null,
+};
+
+export type SyntaxResult = SyntaxResult_Serialize | SyntaxResult_Deserialize;
+
+export type SyntaxResult_Deserialize = {
+	engine: string,
+	input: string,
+	summary: string,
+	profile: SyntaxProfile_Deserialize,
+	constituents: SyntaxConstituent_Deserialize[],
+	clauses: SyntaxClause_Deserialize[],
+	durationMs: number,
+};
+
+export type SyntaxResult_Serialize = {
+	engine: string,
+	input: string,
+	summary: string,
+	profile: SyntaxProfile_Serialize,
+	constituents: SyntaxConstituent_Serialize[],
+	clauses: SyntaxClause_Serialize[],
+	durationMs: number,
+};
+
+export type SyntaxTense = "present" | "past" | "future";
+
+export type SyntaxVoice = "active" | "passive";
 
 export type TestProviderResult = {
 	ok: boolean,

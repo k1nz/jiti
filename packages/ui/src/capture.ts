@@ -18,9 +18,9 @@ export function shouldApplyDelayedCapture(
   return shouldApplyCapture(eventEpoch, liveEpoch, inputDirty) && currentInput.trim() === '';
 }
 
-/** 翻译/语法热键在拿到非空选区后自动提交。 */
+/** 翻译、语法、句法在拿到非空选区后自动提交。 */
 export function shouldAutoSubmitOnCapture(mode: string, text: string): boolean {
-  return (mode === 'translate' || mode === 'grammar') && text.trim().length > 0;
+  return (mode === 'translate' || mode === 'grammar' || mode === 'syntax') && text.trim().length > 0;
 }
 
 /**

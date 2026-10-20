@@ -22,6 +22,7 @@ pub fn generate() -> SpectaBuilder<TauriRuntime> {
             crate::commands::selection::get_selected_text,
             crate::commands::translate::translate,
             crate::commands::grammar::grammar_check,
+            crate::commands::syntax::syntax_analyze,
             crate::commands::providers::providers_snapshot,
             crate::commands::providers::providers_save,
             crate::commands::providers::provider_save_api_key,

@@ -13,6 +13,7 @@
 | `translate` | `TranslateRequest` | `TranslateOutcome` / `EngineErrorPayload` | 对所有已启用引擎并行翻译。`results` 每条是该引擎的译文或错误；默认引擎排在前面，第一条成功的结果为 `preferredId`（词卡与历史）。整单失败只用于空文本或没有启用引擎。英语短词经 `translate://enriched` 补词卡 |
 | `provider_save_api_secret` | `provider`, `apiSecret` | `ProvidersSnapshot` | 有道应用密钥，只写入 `keys.json` |
 | `grammar_check` | `GrammarRequest` + progress Channel | `GrammarCheckOutcome` / `EngineErrorPayload` | SSE+NDJSON；`requestId` 可选；被替换的请求返回 `cancelled` 且不写历史/错题；`mistakeIds` 与 `result.errors` 按下标对齐 |
+| `syntax_analyze` | `SyntaxRequest` + progress Channel | `SyntaxResult` / `EngineErrorPayload` | 中英句子的句型、时态、成分与从句。SSE+NDJSON；`requestId` 可选；被替换的请求返回 `cancelled` 且不写历史；成功写 `history(kind=syntax)`，不收录错题 |
 | `mistakes_list` | `MistakeFilter` | `MistakeList` | 分页/全量筛选 |
 | `mistakes_create` | `NewMistake` | `Mistake` | 手动收录；缺省 status 用偏好 `defaultStatus` |
 | `mistakes_update` | `id`, `MistakePatch` | `Mistake` | 改 status / tags |
@@ -28,7 +29,7 @@
 | `review_plan_active` | — | `ReviewPlan \| null` | 当前方案 |
 | `review_plan_grade` | `ReviewGradeRequest` | `ReviewGradeResult` | `answer` 比对填空/默写；`markLearned` 才改源行 status |
 | `review_plan_complete_day` | `planId`, `dayIndex` | `ReviewPlan` | 标记该轮完成 |
-| `history_list` / `history_clear` | — | 条目 / 删除行数 | 含 translate / grammar / ai_review / review_plan |
+| `history_list` / `history_clear` | — | 条目 / 删除行数 | 含 translate / grammar / syntax / ai_review / review_plan |
 | `providers_*` / `provider_*` | 见绑定 | 快照 / 测试结果 | Key 只进 `keys.json` |
 | `preferences_snapshot` | — | `PreferencesSnapshot` | locale / theme / 唤起聚焦 / 真实自启状态 |
 | `preferences_update` | `PreferencesPatch` | `PreferencesSnapshot` / string | 自启失败时返回错误，UI 回滚 |

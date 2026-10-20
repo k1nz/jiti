@@ -36,8 +36,10 @@ describe('shouldApplyDelayedCapture', () => {
 describe('shouldAutoSubmitOnCapture', () => {
   it('语法热键拿到非空选区后自动检查', () => {
     expect(shouldAutoSubmitOnCapture('grammar', 'He go to school.')).toBe(true);
+    expect(shouldAutoSubmitOnCapture('syntax', 'The book was expensive.')).toBe(true);
     expect(shouldAutoSubmitOnCapture('translate', 'hello')).toBe(true);
     expect(shouldAutoSubmitOnCapture('grammar', '  ')).toBe(false);
+    expect(shouldAutoSubmitOnCapture('syntax', '  ')).toBe(false);
     expect(shouldAutoSubmitOnCapture('mistakes', 'He go to school.')).toBe(false);
   });
 });

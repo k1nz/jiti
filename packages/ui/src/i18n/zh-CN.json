@@ -5,6 +5,7 @@
   "tabs": {
     "translate": "翻译",
     "grammar": "语法",
+    "syntax": "句法",
     "mistakes": "错题本",
     "history": "历史"
   },
@@ -53,12 +54,65 @@
     "translation": "译文",
     "hint": "输入英语文本，或选中一段文字后按 {shortcut}"
   },
+  "syntax": {
+    "action": "分析",
+    "analyzing": "正在分析",
+    "retrying": "正在重新解析",
+    "hint": "输入中文或英文句子，分析句型、时态、成分和从句",
+    "constituents": "句子成分",
+    "clauses": "从句",
+    "language": {
+      "zh": "中文",
+      "en": "英语",
+      "mixed": "中英混合"
+    },
+    "sentence": {
+      "declarative": "陈述句",
+      "interrogative": "疑问句",
+      "imperative": "祈使句",
+      "exclamatory": "感叹句",
+      "fragment": "片段"
+    },
+    "tense": {
+      "present": "现在",
+      "past": "过去",
+      "future": "将来"
+    },
+    "aspect": {
+      "simple": "一般",
+      "progressive": "进行",
+      "perfect": "完成",
+      "perfect_progressive": "完成进行"
+    },
+    "voice": {
+      "active": "主动",
+      "passive": "被动"
+    },
+    "role": {
+      "subject": "主语",
+      "predicate": "谓语",
+      "object": "宾语",
+      "attribute": "定语",
+      "adverbial": "状语",
+      "complement": "补语",
+      "other": "其他"
+    },
+    "clause": {
+      "main": "主句",
+      "relative": "定语从句",
+      "noun": "名词性从句",
+      "adverbial": "状语从句",
+      "coordinate": "并列",
+      "other": "其他"
+    }
+  },
   "history": {
     "title": "历史记录",
     "clear": "清空",
     "empty": "暂无历史",
     "kindTranslate": "翻译",
     "kindGrammar": "语法",
+    "kindSyntax": "句法",
     "kindReview": "复习",
     "kindPlan": "复习课",
     "grammarCorrect": "语法正确"
@@ -112,7 +166,7 @@
     "defaultEngineHint": "多个引擎一起翻译时，这一条排在最前，并用于复制、收藏和词卡。",
     "multiHint": "可以同时打开多个引擎。翻译时会一起请求，并在面板里分条显示。",
     "writeHistory": "写历史",
-    "writeHistoryHint": "把翻译和语法结果保存到本机。",
+    "writeHistoryHint": "把翻译、语法和句法结果保存到本机。",
     "mistakes": "错题本",
     "autoCollect": "自动收录",
     "autoCollectHint": "语法检查后自动收进错题本。",

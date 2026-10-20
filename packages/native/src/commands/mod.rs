@@ -13,5 +13,6 @@ pub mod providers;
 pub mod selection;
 pub mod settings;
 pub mod study;
+pub mod syntax;
 pub mod translate;
 pub mod updates;
