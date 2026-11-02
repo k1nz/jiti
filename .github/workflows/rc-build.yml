@@ -35,6 +35,9 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job does not checkout. Newer gh refuses to run without a
+          # local git repo unless GH_REPO is set.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
@@ -174,6 +177,7 @@ jobs:
       - name: Require every platform installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           names="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')"
