@@ -36,6 +36,7 @@ import type {
 } from '../ipc/bindings';
 import { Channel } from '@tauri-apps/api/core';
 import {
+  isDocumentLocation,
   isStalePreferredCapture,
   shouldApplyCapture,
   shouldApplyDelayedCapture,
@@ -280,6 +281,13 @@ function applyCapturedText(selected: SelectedText, epoch: number) {
   if (composing.value) return;
   if (!shouldApplyCapture(epoch, captureEpoch.value, inputDirty.value)) return;
   if (isStalePreferredCapture(selected.text, selected.method, lastCommitted.value)) return;
+  // Foxmail 一类 CEF 页会把 file:// 页面地址当成 UIA 选区，留给剪贴板兜底。
+  if (
+    (selected.method === 'uia' || selected.method === 'ax') &&
+    isDocumentLocation(selected.text)
+  ) {
+    return;
+  }
   applyingCapture = true;
   store.input = selected.text;
   void nextTick(() => {

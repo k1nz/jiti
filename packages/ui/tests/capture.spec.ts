@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStalePreferredCapture, shouldApplyCapture, shouldApplyDelayedCapture, shouldAutoSubmitOnCapture } from '../src/capture';
+import { isDocumentLocation, isStalePreferredCapture, shouldApplyCapture, shouldApplyDelayedCapture, shouldAutoSubmitOnCapture } from '../src/capture';
 
 describe('shouldApplyCapture', () => {
   it('只接受当前这次热键的捕获', () => {
@@ -25,11 +25,40 @@ describe('isStalePreferredCapture', () => {
   });
 });
 
+describe('isDocumentLocation', () => {
+  it('把 Foxmail 读信框地址当成页面地址', () => {
+    expect(
+      isDocumentLocation(
+        'file:///C:/Users/77251/AppData/Roaming/Foxmail7/Temp-54432-20261101174538/mail_frame.html?foxhandler=MailReadProcessHandler&b=2',
+      ),
+    ).toBe(true);
+    expect(isDocumentLocation('https://mail.example.com/read?id=1')).toBe(true);
+    expect(isDocumentLocation('about:blank')).toBe(true);
+  });
+
+  it('普通选区和夹在句子里的链接不是页面地址', () => {
+    expect(isDocumentLocation('Delivery to the following recipient failed')).toBe(false);
+    expect(isDocumentLocation('See https://example.com for details')).toBe(false);
+    expect(isDocumentLocation('')).toBe(false);
+  });
+});
+
 describe('shouldApplyDelayedCapture', () => {
   it('输入已有内容时不采用迟到的剪贴板', () => {
     expect(shouldApplyDelayedCapture(2, 2, false, 'already')).toBe(false);
     expect(shouldApplyDelayedCapture(2, 2, false, '')).toBe(true);
     expect(shouldApplyDelayedCapture(1, 2, false, '')).toBe(false);
+  });
+
+  it('输入里只有页面地址时允许剪贴板覆盖', () => {
+    expect(
+      shouldApplyDelayedCapture(
+        2,
+        2,
+        false,
+        'file:///C:/Users/77251/AppData/Roaming/Foxmail7/Temp-54432-20261101174538/mail_frame.html?foxhandler=MailReadProcessHandler&b=2',
+      ),
+    ).toBe(true);
   });
 });
 

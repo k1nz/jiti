@@ -11,7 +11,7 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, OpenClipboard,
-    SetClipboardData,
+    RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
@@ -21,6 +21,7 @@ use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationTextPattern, IUIAutomationValuePattern,
     UIA_TextPatternId, UIA_ValuePatternId,
 };
+use windows::core::PCWSTR;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
     KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
@@ -140,37 +141,91 @@ fn uia_selected() -> Option<String> {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
         let focused = automation.GetFocusedElement().ok()?;
+        let walker = automation.ControlViewWalker().ok();
 
-        if let Ok(pattern) =
-            focused.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
-        {
-            if let Ok(ranges) = pattern.GetSelection() {
-                let len = ranges.Length().ok()?;
-                for index in 0..len {
-                    if let Ok(range) = ranges.GetElement(index) {
-                        if let Ok(bstr) = range.GetText(-1) {
-                            let text = bstr.to_string();
-                            if !text.trim().is_empty() {
-                                return Some(text);
-                            }
-                        }
+        // Foxmail 读信框是 CEF。文档控件的 Value 是
+        // `file:///.../mail_frame.html?foxhandler=...`，TextPattern 才是选区。
+        // 选区为空时不要退回 Value，否则页面地址会占住输入框，剪贴板兜底被丢掉。
+        let mut saw_text_pattern = false;
+        let mut current = focused.clone();
+        for _ in 0..8 {
+            if let Ok(pattern) =
+                current.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+            {
+                saw_text_pattern = true;
+                if let Some(text) = text_from_selection(&pattern) {
+                    if let Some(text) = reject_document_location(text) {
+                        return Some(text);
                     }
                 }
             }
+            let Some(walker) = walker.as_ref() else {
+                break;
+            };
+            match walker.GetParentElement(&current) {
+                Ok(parent) => current = parent,
+                Err(_) => break,
+            }
+        }
+
+        if saw_text_pattern {
+            return None;
         }
 
         if let Ok(pattern) =
             focused.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
         {
             if let Ok(bstr) = pattern.CurrentValue() {
-                let text = bstr.to_string();
-                if !text.trim().is_empty() {
-                    return Some(text);
-                }
+                return reject_document_location(bstr.to_string());
             }
         }
         None
     }
+}
+
+fn text_from_selection(pattern: &IUIAutomationTextPattern) -> Option<String> {
+    unsafe {
+        let ranges = pattern.GetSelection().ok()?;
+        let len = ranges.Length().ok()?;
+        let mut parts = Vec::new();
+        for index in 0..len {
+            if let Ok(range) = ranges.GetElement(index) {
+                if let Ok(bstr) = range.GetText(-1) {
+                    let text = bstr.to_string();
+                    if !text.is_empty() {
+                        parts.push(text);
+                    }
+                }
+            }
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("\n"))
+        }
+    }
+}
+
+fn reject_document_location(text: String) -> Option<String> {
+    let comparable = text.trim_matches(|ch: char| ch.is_whitespace() || ch == '\0');
+    if comparable.is_empty() || is_document_location(comparable) {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// 单行 `file://` / `http(s)://` / `about:`。Foxmail 读信框和浏览器文档的 UIA Value 都是这种地址。
+pub(crate) fn is_document_location(text: &str) -> bool {
+    let text = text.trim_matches(|ch: char| ch.is_whitespace() || ch == '\0');
+    if text.is_empty() || text.len() > 2048 || text.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let lower = text.to_ascii_lowercase();
+    lower.starts_with("file://")
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("about:")
 }
 
 fn clipboard_fallback() -> Option<String> {
@@ -282,23 +337,200 @@ unsafe fn read_selected_from_clipboard() -> Option<String> {
         return None;
     }
     let text = (|| {
-        let handle = GetClipboardData(CF_UNICODETEXT.0 as u32).ok()?;
-        let global = HGLOBAL(handle.0);
-        let size = GlobalSize(global);
-        if size < 2 {
-            return None;
+        let unicode = read_clipboard_unicode()?;
+        let html = read_clipboard_html();
+        let chosen = prefer_clipboard_text(&unicode, html.as_deref());
+        if chosen.trim().is_empty() {
+            None
+        } else {
+            Some(chosen)
         }
-        let ptr = GlobalLock(global) as *const u16;
-        if ptr.is_null() {
-            return None;
-        }
-        let words = std::slice::from_raw_parts(ptr, size / 2);
-        let text = String::from_utf16_lossy(words);
-        let _ = GlobalUnlock(global);
-        Some(text)
     })();
     let _ = CloseClipboard();
     text
+}
+
+unsafe fn read_clipboard_unicode() -> Option<String> {
+    let handle = GetClipboardData(CF_UNICODETEXT.0 as u32).ok()?;
+    let global = HGLOBAL(handle.0);
+    let size = GlobalSize(global);
+    if size < 2 {
+        return None;
+    }
+    let ptr = GlobalLock(global) as *const u16;
+    if ptr.is_null() {
+        return None;
+    }
+    let words = std::slice::from_raw_parts(ptr, size / 2);
+    let text = String::from_utf16_lossy(words);
+    let _ = GlobalUnlock(global);
+    Some(text)
+}
+
+unsafe fn read_clipboard_html() -> Option<Vec<u8>> {
+    let mut name: Vec<u16> = "HTML Format".encode_utf16().collect();
+    name.push(0);
+    let format = RegisterClipboardFormatW(PCWSTR(name.as_ptr()));
+    if format == 0 {
+        return None;
+    }
+    let handle = GetClipboardData(format).ok()?;
+    let global = HGLOBAL(handle.0);
+    let size = GlobalSize(global);
+    if size == 0 || size > MAX_CLIPBOARD_FORMAT_BYTES {
+        return None;
+    }
+    let ptr = GlobalLock(global);
+    if ptr.is_null() {
+        return None;
+    }
+    let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), size).to_vec();
+    let _ = GlobalUnlock(global);
+    Some(bytes)
+}
+
+/// 纯文本如果就是 HTML 剪贴板的 `SourceURL`，那是页面地址不是选区。
+/// 改用 `StartFragment`/`EndFragment` 里的文字。没有 HTML 格式时保持原纯文本
+/// （记事本里选中一个网址仍然要能翻译）。
+pub(crate) fn prefer_clipboard_text(unicode: &str, html: Option<&[u8]>) -> String {
+    let comparable = unicode.trim_matches(|ch: char| ch.is_whitespace() || ch == '\0');
+    let Some(html) = html else {
+        return unicode.to_string();
+    };
+    let Some(source) = html_source_url(html) else {
+        return unicode.to_string();
+    };
+    if !is_document_location(comparable) || !same_document_url(comparable, &source) {
+        return unicode.to_string();
+    }
+    html_fragment_plain(html).unwrap_or_default()
+}
+
+fn same_document_url(left: &str, right: &str) -> bool {
+    left.trim().eq_ignore_ascii_case(right.trim())
+}
+
+fn cf_html_header(bytes: &[u8]) -> &str {
+    let end = bytes.iter().position(|byte| *byte == b'<').unwrap_or(bytes.len());
+    std::str::from_utf8(&bytes[..end]).unwrap_or("")
+}
+
+fn html_source_url(bytes: &[u8]) -> Option<String> {
+    for line in cf_html_header(bytes).lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        if key.eq_ignore_ascii_case("SourceURL") {
+            let url = value.trim();
+            if !url.is_empty() {
+                return Some(url.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn header_offset(header: &str, key: &str) -> Option<usize> {
+    for line in header.lines() {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case(key) {
+            return value.trim().parse().ok();
+        }
+    }
+    None
+}
+
+fn html_fragment_plain(bytes: &[u8]) -> Option<String> {
+    let header = cf_html_header(bytes);
+    let start = header_offset(header, "StartFragment")?;
+    let end = header_offset(header, "EndFragment")?;
+    if start > end || end > bytes.len() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&bytes[start..end]);
+    let plain = html_fragment_to_plain(&raw);
+    let plain = plain.trim();
+    if plain.is_empty() || is_document_location(plain) {
+        None
+    } else {
+        Some(plain.to_string())
+    }
+}
+
+fn html_fragment_to_plain(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while !rest.is_empty() {
+        if let Some(tag_at) = rest.find('<') {
+            push_decoded(&mut out, &rest[..tag_at]);
+            rest = &rest[tag_at + 1..];
+            let Some(end) = rest.find('>') else {
+                break;
+            };
+            if tag_inserts_break(&rest[..end]) {
+                out.push('\n');
+            }
+            rest = &rest[end + 1..];
+        } else {
+            push_decoded(&mut out, rest);
+            break;
+        }
+    }
+    out
+}
+
+fn tag_inserts_break(tag_body: &str) -> bool {
+    let body = tag_body.trim();
+    let closing = body.starts_with('/');
+    let name = body
+        .trim_start_matches('/')
+        .split(|ch: char| ch.is_whitespace() || ch == '/')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    name == "br"
+        || (closing
+            && matches!(
+                name.as_str(),
+                "p" | "div" | "li" | "tr" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+            ))
+}
+
+fn push_decoded(out: &mut String, text: &str) {
+    let mut rest = text;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        rest = &rest[amp + 1..];
+        let Some(end) = rest.find(';') else {
+            out.push('&');
+            out.push_str(rest);
+            return;
+        };
+        match decode_entity(&rest[..end]) {
+            Some(decoded) => out.push_str(decoded),
+            None => {
+                out.push('&');
+                out.push_str(&rest[..end]);
+                out.push(';');
+            }
+        }
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+}
+
+fn decode_entity(entity: &str) -> Option<&'static str> {
+    match entity {
+        "amp" => Some("&"),
+        "lt" => Some("<"),
+        "gt" => Some(">"),
+        "quot" => Some("\""),
+        "apos" => Some("'"),
+        "nbsp" => Some(" "),
+        _ => None,
+    }
 }
 
 /// 字格式级还原：把复制前的每一种剪贴板格式写回去，而不是只还原纯文本。
@@ -387,6 +619,78 @@ mod tests {
         assert!(!clipboard_format_is_hglobal(0x0082), "CF_DSPBITMAP");
         assert!(!clipboard_format_is_hglobal(0x0300), "CF_GDIOBJFIRST");
         assert!(!clipboard_format_is_hglobal(0x0200), "CF_PRIVATEFIRST");
+    }
+
+    fn cf_html(source_url: &str, fragment: &str) -> Vec<u8> {
+        let html = format!(
+            "<html><body>\r\n<!--StartFragment-->{fragment}<!--EndFragment-->\r\n</body></html>"
+        );
+        let dummy = format!(
+            "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{:010}\r\nEndFragment:{:010}\r\nSourceURL:{source_url}\r\n",
+            0, 0, 0, 0
+        );
+        let start_html = dummy.len();
+        let marker = "<!--StartFragment-->";
+        let start_fragment = start_html + html.find(marker).unwrap() + marker.len();
+        let end_fragment = start_html + html.find("<!--EndFragment-->").unwrap();
+        let end_html = start_html + html.len();
+        let header = format!(
+            "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{:010}\r\nEndFragment:{:010}\r\nSourceURL:{source_url}\r\n",
+            start_html, end_html, start_fragment, end_fragment
+        );
+        assert_eq!(header.len(), dummy.len());
+        let mut bytes = header.into_bytes();
+        bytes.extend(html.into_bytes());
+        bytes
+    }
+
+    #[test]
+    fn foxmail_mail_frame_url_is_a_document_location() {
+        assert!(is_document_location(
+            "file:///C:/Users/77251/AppData/Roaming/Foxmail7/Temp-54432-20261101174538/mail_frame.html?foxhandler=MailReadProcessHandler&b=2"
+        ));
+        assert!(is_document_location("https://mail.example.com/read?id=1"));
+        assert!(is_document_location("about:blank"));
+        assert!(!is_document_location("Delivery to the following recipient failed"));
+        assert!(!is_document_location("See https://example.com for details"));
+    }
+
+    #[test]
+    fn clipboard_keeps_real_text_when_html_only_records_the_page_url() {
+        let url = "file:///C:/Users/77251/AppData/Roaming/Foxmail7/Temp-54432-20261101174538/mail_frame.html?foxhandler=MailReadProcessHandler&b=2";
+        let html = cf_html(url, "Delivery failed");
+        assert_eq!(
+            prefer_clipboard_text("Delivery failed", Some(&html)),
+            "Delivery failed"
+        );
+    }
+
+    #[test]
+    fn clipboard_drops_foxmail_page_url_and_uses_html_fragment() {
+        let url = "file:///C:/Users/77251/AppData/Roaming/Foxmail7/Temp-54432-20261101174538/mail_frame.html?foxhandler=MailReadProcessHandler&b=2";
+        let html = cf_html(url, "hello <b>world</b><br>next &amp; more");
+        assert_eq!(
+            prefer_clipboard_text(url, Some(&html)),
+            "hello world\nnext & more"
+        );
+    }
+
+    #[test]
+    fn selected_url_without_html_clipboard_is_kept() {
+        assert_eq!(
+            prefer_clipboard_text("https://example.com/path", None),
+            "https://example.com/path"
+        );
+    }
+
+    #[test]
+    fn selected_link_is_not_replaced_by_the_page_url() {
+        let page = "file:///C:/mail_frame.html?foxhandler=MailReadProcessHandler&b=2";
+        let html = cf_html(page, "https://example.com/a");
+        assert_eq!(
+            prefer_clipboard_text("https://example.com/a", Some(&html)),
+            "https://example.com/a"
+        );
     }
 
     #[test]

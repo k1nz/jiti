@@ -8,14 +8,33 @@ export function shouldApplyCapture(
   return eventEpoch === liveEpoch && !inputDirty;
 }
 
-/** 热键后迟到的剪贴板兜底：只在输入仍为空时采用，避免覆盖已填入的选区。 */
+/**
+ * 嵌入式浏览器（Foxmail 读信框）的 UIA Value 经常是页面地址，
+ * 例如 `file:///.../mail_frame.html?foxhandler=...`，不是选区。
+ */
+export function isDocumentLocation(text: string): boolean {
+  const value = text.replace(/\0/g, '').trim();
+  if (!value || value.length > 2048 || /\s/u.test(value)) return false;
+  const lower = value.toLowerCase();
+  return (
+    lower.startsWith('file://') ||
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('about:')
+  );
+}
+
+/** 热键后迟到的剪贴板兜底：输入仍为空，或里面只是页面地址时采用。 */
 export function shouldApplyDelayedCapture(
   eventEpoch: number,
   liveEpoch: number,
   inputDirty: boolean,
   currentInput: string,
 ): boolean {
-  return shouldApplyCapture(eventEpoch, liveEpoch, inputDirty) && currentInput.trim() === '';
+  return (
+    shouldApplyCapture(eventEpoch, liveEpoch, inputDirty) &&
+    (currentInput.trim() === '' || isDocumentLocation(currentInput))
+  );
 }
 
 /** 翻译、语法、句法在拿到非空选区后自动提交。 */
