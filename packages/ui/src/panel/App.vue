@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   IconAbc,
   IconBinaryTree,
+  IconChevronDown,
   IconCopy,
   IconHistory,
   IconLanguage,
@@ -80,7 +81,9 @@ const { t, locale } = useI18n();
 const store = usePanelStore();
 const grammar = useGrammarStore();
 const syntax = useSyntaxStore();
-const searchEl = ref<HTMLInputElement | null>(null);
+const searchEl = ref<HTMLTextAreaElement | null>(null);
+const searchExpanded = ref(false);
+const SEARCH_MAX_LINES = 8;
 
 function tx(key: string, values?: Record<string, unknown>) {
   return values ? String(t(key, values)) : String(t(key));
@@ -272,9 +275,48 @@ function onSearchEnter() {
 
 function onSearchKeydown(e: KeyboardEvent) {
   if (e.key !== 'Enter') return;
+  if (e.shiftKey) {
+    if (!searchExpanded.value) searchExpanded.value = true;
+    return;
+  }
   if (!shouldHandlePanelShortcut(e)) return;
   e.preventDefault();
   onSearchEnter();
+}
+
+function resizeSearch() {
+  const el = searchEl.value;
+  if (!el) return;
+  if (!searchExpanded.value) {
+    el.style.height = '';
+    el.style.overflowY = '';
+    return;
+  }
+  el.style.height = 'auto';
+  const style = getComputedStyle(el);
+  const line = Number.parseFloat(style.lineHeight) || 24;
+  const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+  const max = line * SEARCH_MAX_LINES + padding;
+  const full = el.scrollHeight;
+  const next = Math.min(full, max);
+  el.style.height = `${next}px`;
+  el.style.overflowY = full > max + 1 ? 'auto' : 'hidden';
+}
+
+function toggleSearchExpanded() {
+  searchExpanded.value = !searchExpanded.value;
+  const el = searchEl.value;
+  if (!searchExpanded.value && el) {
+    el.style.height = '';
+    el.style.overflowY = '';
+  }
+  void nextTick(() => {
+    resizeSearch();
+    if (!searchExpanded.value || !el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  });
 }
 
 function applyCapturedText(selected: SelectedText, epoch: number) {
@@ -289,6 +331,7 @@ function applyCapturedText(selected: SelectedText, epoch: number) {
     return;
   }
   applyingCapture = true;
+  searchExpanded.value = false;
   store.input = selected.text;
   void nextTick(() => {
     applyingCapture = false;
@@ -326,6 +369,7 @@ function applyDelayedCapture(selected: SelectedText, epoch: number) {
 }
 
 function onSearchInput() {
+  resizeSearch();
   if (applyingCapture) return;
   inputDirty.value = true;
   userTargetOverride.value = false;
@@ -714,7 +758,9 @@ async function onKeydown(e: KeyboardEvent) {
 
 function onInputFocus(e: FocusEvent) {
   if (composing.value) return;
-  (e.target as HTMLInputElement).select();
+  const el = e.target as HTMLTextAreaElement;
+  if (searchExpanded.value && el.value.includes('\n')) return;
+  el.select();
 }
 
 onMounted(async () => {
@@ -726,6 +772,7 @@ onMounted(async () => {
     captureEpoch.value = event.payload.epoch;
     inputDirty.value = false;
     applyingCapture = true;
+    searchExpanded.value = false;
     store.input = '';
     void nextTick(() => {
       applyingCapture = false;
@@ -819,6 +866,7 @@ let inputDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 watch(
   () => store.input,
   () => {
+    void nextTick(resizeSearch);
     if (inputDebounceTimer !== undefined) clearTimeout(inputDebounceTimer);
     inputDebounceTimer = setTimeout(() => {
       updateTargetFromSource();
@@ -854,23 +902,32 @@ watch(
       </template>
     </Onboarding>
     <template v-else>
-        <header class="search-wrap">
+        <header class="search-wrap" :class="{ 'is-expanded': searchExpanded }">
       <IconSearch class="search-icon" :size="18" :stroke-width="1.75" aria-hidden="true" />
-      <input
+      <textarea
         ref="searchEl"
         v-model="store.input"
         class="search"
-        type="text"
+        rows="1"
         :placeholder="placeholder"
         :aria-label="placeholder"
         spellcheck="false"
-        autocomplete="off"
         @focus="onInputFocus"
         @input="onSearchInput"
         @compositionstart="composing = true"
         @compositionend="composing = false"
         @keydown="onSearchKeydown"
-      />
+      ></textarea>
+      <button
+        class="icon-btn search-expand"
+        type="button"
+        :aria-expanded="searchExpanded"
+        :aria-label="searchExpanded ? t('query.collapse') : t('query.expand')"
+        :title="searchExpanded ? t('query.collapse') : t('query.expand')"
+        @click="toggleSearchExpanded"
+      >
+        <IconChevronDown class="chevron" :size="15" :stroke-width="1.75" />
+      </button>
       <ClipBookmark
         :saved="inputClipped"
         :disabled="!store.input.trim()"

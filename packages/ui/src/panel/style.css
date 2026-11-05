@@ -198,6 +198,40 @@ textarea,
   border-bottom: 1px solid var(--j-border);
 }
 
+.search-wrap.is-expanded {
+  align-items: flex-start;
+}
+
+.search-wrap.is-expanded .search-icon {
+  margin-top: 8px;
+}
+
+.search-wrap.is-expanded .icon-btn {
+  margin-top: 4px;
+}
+
+.search-wrap:not(.is-expanded) .search {
+  height: calc(1.45em + 12px);
+  max-height: calc(1.45em + 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: normal;
+}
+
+.icon-btn.search-expand {
+  flex-shrink: 0;
+  width: 28px;
+  padding: 0;
+}
+
+.search-expand .chevron {
+  transition: transform 160ms ease;
+}
+
+.search-wrap.is-expanded .search-expand .chevron {
+  transform: rotate(180deg);
+}
+
 .search-wrap:focus-within {
   border-bottom-color: var(--j-accent);
 }
@@ -220,6 +254,12 @@ textarea,
   letter-spacing: -0.01em;
   color: var(--j-fg);
   background: transparent;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: none;
+  overflow-x: hidden;
+  overflow-y: hidden;
   border: 0;
   border-radius: 0;
   outline: none;
@@ -591,6 +631,7 @@ textarea,
   font-weight: 500;
   line-height: 1.65;
   letter-spacing: -0.012em;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
@@ -820,6 +861,7 @@ textarea,
 .history-input {
   font-size: 12.5px;
   color: var(--j-muted);
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
@@ -828,6 +870,7 @@ textarea,
 .history-output {
   font-size: 14px;
   line-height: 1.55;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;

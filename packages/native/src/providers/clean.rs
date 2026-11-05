@@ -253,6 +253,14 @@ mod tests {
     }
 
     #[test]
+    fn keeps_paragraph_breaks() {
+        assert_eq!(
+            sanitize_translation_output("第一段。\n\n第二段。"),
+            "第一段。\n\n第二段。"
+        );
+    }
+
+    #[test]
     fn keeps_balanced_code_braces() {
         assert_eq!(
             sanitize_translation_output("int main() { }"),

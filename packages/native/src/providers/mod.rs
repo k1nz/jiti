@@ -12,11 +12,13 @@ pub mod google;
 pub mod grammar;
 pub mod lang;
 pub mod llm;
+mod paragraphs;
 pub mod plan;
 pub mod review;
 pub mod syntax;
 pub mod youdao;
 
+use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
@@ -358,6 +360,7 @@ async fn translate_one(
 }
 
 /// 适配器级入口：测试连接与 mock 用例直接走这里，不依赖 secrets/AppHandle。
+/// 多段原文按段翻译，再用空行按原顺序拼回。
 pub async fn translate_with(
     id: &str,
     cfg: &ProviderConfig,
@@ -366,22 +369,94 @@ pub async fn translate_with(
     request: TranslateRequest,
 ) -> Result<TranslateResult, EngineError> {
     let started = std::time::Instant::now();
+    let blocks = paragraphs::split_paragraphs(&request.text);
+    let mut translated = if blocks.len() <= 1 {
+        translate_request(id, cfg, &api_key, app_secret.as_deref(), &request).await?
+    } else {
+        translate_paragraphs(id, cfg, &api_key, app_secret.as_deref(), &request, blocks).await?
+    };
+    translated.input = request.text;
+    translated.duration_ms = started.elapsed().as_millis() as u32;
+    Ok(translated)
+}
+
+const PARAGRAPH_CONCURRENCY: usize = 4;
+
+async fn translate_paragraphs(
+    id: &str,
+    cfg: &ProviderConfig,
+    api_key: &str,
+    app_secret: Option<&str>,
+    request: &TranslateRequest,
+    blocks: Vec<String>,
+) -> Result<TranslateResult, EngineError> {
+    let count = blocks.len();
+    let results = stream::iter(blocks.into_iter().enumerate())
+        .map(|(index, block)| {
+            let id = id.to_string();
+            let cfg = cfg.clone();
+            let api_key = api_key.to_string();
+            let app_secret = app_secret.map(str::to_string);
+            let mut req = request.clone();
+            req.text = block;
+            async move {
+                let translated =
+                    translate_request(&id, &cfg, &api_key, app_secret.as_deref(), &req).await?;
+                Ok::<_, EngineError>((index, translated))
+            }
+        })
+        .buffer_unordered(PARAGRAPH_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut indexed = Vec::with_capacity(count);
+    for item in results {
+        indexed.push(item?);
+    }
+    indexed.sort_by_key(|(index, _)| *index);
+
+    let mut detected = None;
+    let mut engine = String::new();
+    let mut target = request.to.clone();
+    let mut outputs = Vec::with_capacity(indexed.len());
+    for (index, translated) in indexed {
+        if index == 0 {
+            detected = translated.detected_from.clone();
+            engine = translated.engine;
+            target = translated.target;
+        }
+        outputs.push(translated.output);
+    }
+    Ok(TranslateResult {
+        engine,
+        output: paragraphs::join_paragraphs(&outputs),
+        input: request.text.clone(),
+        detected_from: detected,
+        target,
+        duration_ms: 0,
+        enrichment: None,
+        enrichment_word: None,
+        enrichment_pending: false,
+    })
+}
+
+async fn translate_request(
+    id: &str,
+    cfg: &ProviderConfig,
+    api_key: &str,
+    app_secret: Option<&str>,
+    request: &TranslateRequest,
+) -> Result<TranslateResult, EngineError> {
+    let started = std::time::Instant::now();
     let transport = services::transport::shared();
     let mut translated = match id {
-        PROVIDER_DEEPL => deepl::translate(cfg, &api_key, &request, &transport).await,
-        PROVIDER_LLM => llm::translate(cfg, &api_key, &request, &transport).await,
+        PROVIDER_DEEPL => deepl::translate(cfg, api_key, request, &transport).await,
+        PROVIDER_LLM => llm::translate(cfg, api_key, request, &transport).await,
         PROVIDER_YOUDAO => {
-            youdao::translate(
-                cfg,
-                &api_key,
-                app_secret.as_deref().unwrap_or(""),
-                &request,
-                &transport,
-            )
-            .await
+            youdao::translate(cfg, api_key, app_secret.unwrap_or(""), request, &transport).await
         }
-        PROVIDER_GOOGLE => google::translate(cfg, &api_key, &request, &transport).await,
-        PROVIDER_BING => bing::translate(cfg, &api_key, &request, &transport).await,
+        PROVIDER_GOOGLE => google::translate(cfg, api_key, request, &transport).await,
+        PROVIDER_BING => bing::translate(cfg, api_key, request, &transport).await,
         _ => Err(EngineError::InvalidConfig {
             provider: "unknown".into(),
             detail: format!("未注册的 Provider: {id}"),
@@ -605,5 +680,77 @@ mod tests {
         let cfg = ProviderConfig::builtin(PROVIDER_LLM);
         let v = provider_view(PROVIDER_LLM, "LLM", &cfg, true, false);
         assert!(!serde_json::to_string(&v).unwrap().contains("secret"));
+    }
+
+    fn llm_cfg(base_url: &str) -> ProviderConfig {
+        let mut cfg = ProviderConfig::builtin(PROVIDER_LLM);
+        cfg.base_url = Some(base_url.to_string());
+        cfg.enabled = true;
+        cfg
+    }
+
+    #[test]
+    fn single_paragraph_is_one_request() {
+        let mut server = mockito::Server::new();
+        let base = format!("{}/v1", server.url());
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_body(r#"{"choices":[{"message":{"content":"你好"}}]}"#)
+            .expect(1)
+            .create();
+        let out = tauri::async_runtime::block_on(translate_with(
+            PROVIDER_LLM,
+            &llm_cfg(&base),
+            "sk-test".into(),
+            None,
+            TranslateRequest {
+                text: "This is a long line that\ncontinues here.".into(),
+                from: Some("en".into()),
+                to: "zh".into(),
+            },
+        ));
+        mock.assert();
+        let out = out.expect("单段只请求一次");
+        assert_eq!(out.output, "你好");
+        assert_eq!(out.input, "This is a long line that\ncontinues here.");
+    }
+
+    #[test]
+    fn paragraphs_are_translated_separately_and_rejoined() {
+        let mut server = mockito::Server::new();
+        let base = format!("{}/v1", server.url());
+        let first = server
+            .mock("POST", "/v1/chat/completions")
+            .match_body(mockito::Matcher::Regex("Hello there\\.".into()))
+            .with_status(200)
+            .with_body(r#"{"choices":[{"message":{"content":"你好。"}}]}"#)
+            .expect(1)
+            .create();
+        let second = server
+            .mock("POST", "/v1/chat/completions")
+            .match_body(mockito::Matcher::Regex("See you\\.".into()))
+            .with_status(200)
+            .with_body(r#"{"choices":[{"message":{"content":"再见。"}}]}"#)
+            .expect(1)
+            .create();
+        let text = "Hello there.\nSee you.";
+        let out = tauri::async_runtime::block_on(translate_with(
+            PROVIDER_LLM,
+            &llm_cfg(&base),
+            "sk-test".into(),
+            None,
+            TranslateRequest {
+                text: text.into(),
+                from: Some("en".into()),
+                to: "zh".into(),
+            },
+        ));
+        first.assert();
+        second.assert();
+        let out = out.expect("两段应分别译完再拼回");
+        assert_eq!(out.output, "你好。\n\n再见。");
+        assert_eq!(out.input, text);
+        assert_eq!(out.detected_from.as_deref(), Some("en"));
     }
 }

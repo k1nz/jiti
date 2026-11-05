@@ -12,6 +12,10 @@
   "nav": {
     "modes": "Modes"
   },
+  "query": {
+    "expand": "Expand editor",
+    "collapse": "Collapse"
+  },
   "lang": {
     "auto": "Auto",
     "zh": "Chinese",

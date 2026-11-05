@@ -129,7 +129,7 @@ pub async fn translate(
     let source = lang::resolve_source(req.from.as_deref(), &req.text);
     let target_name = lang::language_name(&req.to);
     let system = format!(
-        "You are a professional translation engine. Translate the user's text into {target_name}. Output only the translated text in {target_name}. Never copy the source unchanged when the target language differs. Do not add explanations, quotes, markdown, or JSON."
+        "You are a professional translation engine. Translate the user's text into {target_name}. Output only the translated text in {target_name}. Never copy the source unchanged when the target language differs. Preserve paragraph breaks from the source: a blank line must stay a blank line, and do not merge or split paragraphs. Do not add explanations, quotes, markdown, or JSON."
     );
     let user = match &source {
         Some(from) => format!(

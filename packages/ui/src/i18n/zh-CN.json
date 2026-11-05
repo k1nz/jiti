@@ -12,6 +12,10 @@
   "nav": {
     "modes": "模式"
   },
+  "query": {
+    "expand": "展开编辑",
+    "collapse": "收起"
+  },
   "lang": {
     "auto": "自动",
     "zh": "中文",
